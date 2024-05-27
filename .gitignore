@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+.cache/
+*.local
+build/
+build_installer/
+ext/
+
+.venv/
+Pipfile.lock
+container/requirements.txt
+requirements-dev.txt
+
+*key.rsa

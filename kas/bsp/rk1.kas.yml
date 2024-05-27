@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: Apache-2.0
+---
+header:
+  version : 15
+
+machine: rk1
+target :
+  - secure-core-image
+
+repos:
+  meta-arm:
+    url: 'https://git.yoctoproject.org/meta-arm'
+    path: 'ext/meta-arm'

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+---
+header:
+  version: 15
+repos:
+  meta-security:
+    url: 'https://git.yoctoproject.org/git/meta-security'
+    path: 'ext/meta-security'
+    layers:
+      meta-security-compliance:
+
+local_conf_header:
+  meta-security/meta-security-compliance: |
+    IMAGE_INSTALL:append = ' openscap openscap-daemon scap-security-guide'

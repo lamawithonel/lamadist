@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+[requires]
+python_version = '3.12'
+
+[dev-packages]
+pip = '>=21.1'
+setuptools = '*'
+wheel = '*'
+pipenv = '*'
+
+[packages]
+kas = '*'
+#distro = '*'
+#jsonschema = '*'
+#PyYAML = '*'
+#kconfiglib = '*'
+#newt = '*'

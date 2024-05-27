@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: Apache-2.0
+---
+header:
+  version : 15
+
+machine: soquartz64
+target :
+  - secure-core-image
+
+repos:
+  meta-arm:
+    url: 'https://git.yoctoproject.org/meta-arm'
+    path: 'ext/meta-arm'
+
+  meta-rockchip:
+    url: 'https://git.yoctoproject.org/meta-rockchip'
+    path: 'ext/meta-rockchip'
+
+local_conf_header:
+  Layer priorities: |
+    BBFILE_PRIORITY_rockchip = '4'

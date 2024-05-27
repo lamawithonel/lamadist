@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+---
+header:
+  version : 15
+  includes:
+    - main.kas.yml
+
+distro: anaconda
+target: core-image-anaconda
+
+defaults:
+  repos:
+    branch: scarthgap
+
+repos:
+  meta-anaconda:
+    path: 'ext/meta-anaconda'
+    url: 'https://git.yoctoproject.org/meta-anaconda'
+
+  meta-openembedded:
+    layers :
+      meta-filesystems:
+      meta-gnome:
+      meta-initramfs:
+      meta-networking:
+
+local_conf_header:
+  locale: |
+    # Limit Linux language support to save space, compile time.
+    # FIXME: meta-anaconda seems to require both en_US and en_GB.  Can it be fixed to only require en_US?
+    GLIBC_GENERATE_LOCALES = 'en_US.UTF-8 en_GB.UTF-8'
+    IMAGE_LINGUAS = 'en-us en-gb'
+
+  meta-anaconda: |
+    IMAGE_FSTYPES = 'ext4 wic'
+    INSTALLER_TARGET_BUILD = "${TOPDIR}/../build/tmp/deploy/images/genericx86-64/secure-core-image-${MACHINE}.ext4"
+    #KICKSTART_FILE = "${TOPDIR}/../files/installer.ks"
+
+  meta-selinux: |
+    # TODO: Create an SELinux policy for the installer.
+    DISTRO_FEATURES:remove = ' selinux'

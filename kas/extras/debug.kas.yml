@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+---
+header:
+  version : 15
+local_conf_header:
+  # Debug options should only be included for pre-QA builds
+  Debug options: |
+    GRUB_GFXSERIAL                        = '1'
+    PATCHRESOLVE                          = 'noop'
+    EXTRA_IMAGE_FEATURES:append           = ' debug-tweaks'
+    IMAGE_FEATURES:remove                 = ' splash'
+    IMAGE_INSTALL:append                  = ' curl less'
+
+    # Debug output for meta-secure-core/meta-signing-key
+    USER_KEY_SHOW_VERBOSE                 = '1'
