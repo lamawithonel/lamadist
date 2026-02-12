@@ -1,7 +1,120 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 # LamaDist
 
-A Yocto/OE distribution for my homelab devices.
+**A secure, maintainable Yocto/OpenEmbedded distribution for homelab devices**
+
+LamaDist provides a hardened Linux distribution built with Yocto Project for homelab infrastructure, featuring comprehensive security (SELinux, dm-verity, LUKS, TPM), Kubernetes orchestration (k3s), and robust OTA updates (RAUC).
+
+## Features
+
+- 🔒 **Multi-layered Security**: SELinux, dm-verity, IMA/EVM, LUKS encryption, secure boot
+- 🚀 **Container-ready**: k3s lightweight Kubernetes for orchestrated workloads
+- 🔄 **Atomic Updates**: RAUC-based OTA updates with automatic rollback
+- 🖥️ **Multi-platform**: Support for x86_64 Intel systems and ARM SBCs (Orin NX, RK1, SOQuartz)
+- 📦 **Reproducible Builds**: KAS-based declarative configuration in Docker containers
+- 🎯 **Minimal & Optimized**: Lean system with size-optimized builds (`-Os`)
+
+## Quick Start
+
+### Prerequisites
+
+- Linux system (Ubuntu 22.04+ recommended) or WSL2
+- Docker 20.10+ with BuildKit
+- 8+ GB RAM, 100+ GB free disk space (SSD recommended)
+- Python 3.12
+
+### Build Your First Image
+
+```bash
+# Clone the repository
+git clone https://github.com/lamawithonel/lamadist.git
+cd lamadist
+
+# Set up Python environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install development tools
+make dev-tools-locked
+
+# Build the container
+make container
+
+# Build image (this will take 2-6 hours on first build)
+make build BSP=x86_64
+
+# Images will be in: build/tmp/deploy/images/genericx86-64/
+```
+
+### Supported Hardware (BSPs)
+
+- **x86_64**: Intel-based systems (`make build BSP=x86_64`)
+- **orin-nx**: NVIDIA Jetson Orin NX (`make build BSP=orin-nx`)
+- **rk1**: Radxa RK1 (`make build BSP=rk1`)
+- **soquartz**: Pine64 SOQuartz (`make build BSP=soquartz`)
+
+## Documentation
+
+Comprehensive documentation is available in the [`docs/`](docs/) directory:
+
+- **[Development Plan](docs/PLAN.md)** - Phased roadmap and project planning
+- **[Architecture](docs/ARCHITECTURE.md)** - System architecture and design
+- **[Contributing](docs/CONTRIBUTING.md)** - Contribution guidelines and workflow
+- **[Tooling](docs/TOOLING.md)** - Tools, setup, and build system guide
+
+### Key Commands
+
+```bash
+make help              # Show all available targets
+make build BSP=x86_64  # Build for x86_64
+make kash              # Interactive shell in build environment
+make dump              # Dump KAS configuration
+make version           # Show build version
+```
+
+See [`docs/TOOLING.md`](docs/TOOLING.md) for detailed usage information.
+
+## Project Status
+
+**Current Phase**: Phase 0 - Architecture Documentation + Tooling Baseline
+
+LamaDist is in active development. See [`docs/PLAN.md`](docs/PLAN.md) for the complete development roadmap.
+
+## Architecture Overview
+
+```
+┌─────────────────────────────────────────────────┐
+│              LamaDist System                     │
+├─────────────────────────────────────────────────┤
+│  User Services | Containers (k3s) | systemd  │
+│  ─────────────────────────────────────────────  │
+│  Security: SELinux | IMA/EVM | dm-verity | LUKS │
+│  ─────────────────────────────────────────────  │
+│         Linux Kernel 6.6 LTS                     │
+│  ─────────────────────────────────────────────  │
+│    Bootloader (systemd-boot / U-Boot)           │
+│  ─────────────────────────────────────────────  │
+│    Hardware (x86_64 | ARM64)                     │
+└─────────────────────────────────────────────────┘
+```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for detailed architecture information.
+
+## Contributing
+
+Contributions are welcome! Please read [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for:
+
+- Development workflow
+- Branch naming and commit message conventions
+- Pull request process
+- Code review expectations
+- Yocto/OE best practices
+
+## Community & Support
+
+- **Issues**: [GitHub Issues](https://github.com/lamawithonel/lamadist/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/lamawithonel/lamadist/discussions)
+- **Documentation**: [`docs/`](docs/) directory
 
 ## Legal Notice
 
