@@ -30,27 +30,34 @@ LamaDist provides a hardened Linux distribution built with Yocto Project for hom
 git clone https://github.com/lamawithonel/lamadist.git
 cd lamadist
 
-# Install mise (if not already installed)
+# Install mise (if not already installed) - optional for now
 curl https://mise.run | sh
 
-# Install tool versions (Python, etc.)
-mise install
+# For now, use make for building:
+# Set up Python environment
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install development tools
+make dev-tools-locked
 
 # Build the container
-mise run container
+make container
 
 # Build image (this will take 2-6 hours on first build)
-mise run build
+make build
 
 # Images will be in: build/tmp/deploy/images/genericx86-64/
 ```
 
+**Note**: The project is transitioning to `mise` as the primary task runner. The above commands will be simplified to `mise install` and `mise run build` in a future update.
+
 ### Supported Hardware (BSPs)
 
-- **x86_64**: Intel-based systems (`mise run build BSP=x86_64`)
-- **orin-nx**: NVIDIA Jetson Orin NX (`mise run build BSP=orin-nx`)
-- **rk1**: Radxa RK1 (`mise run build BSP=rk1`)
-- **soquartz**: Pine64 SOQuartz (`mise run build BSP=soquartz`)
+- **x86_64**: Intel-based systems (`make build BSP=x86_64`)
+- **orin-nx**: NVIDIA Jetson Orin NX (`make build BSP=orin-nx`)
+- **rk1**: Radxa RK1 (`make build BSP=rk1`)
+- **soquartz**: Pine64 SOQuartz (`make build BSP=soquartz`)
 
 ## Documentation
 
@@ -64,12 +71,18 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 ### Key Commands
 
 ```bash
-mise tasks             # List all available tasks
-mise run build         # Build for default BSP (x86_64)
-mise run build BSP=rk1 # Build for specific BSP
-mise run kash          # Interactive shell in build environment
-mise run dump          # Dump KAS configuration
-mise run version       # Show build version
+# Current commands (use these now):
+make help              # Show all available targets
+make build             # Build for default BSP (x86_64)
+make build BSP=rk1     # Build for specific BSP
+make kash              # Interactive shell in build environment
+make dump              # Dump KAS configuration
+make version           # Show build version
+
+# Planned commands (future mise-based workflow):
+# mise tasks             # List all available tasks
+# mise run build         # Build for default BSP
+# mise run build BSP=rk1 # Build for specific BSP
 ```
 
 See [`docs/TOOLING.md`](docs/TOOLING.md) for detailed usage information.

@@ -217,30 +217,32 @@ sudo apt-get install -y \
 
 3. **Install Tool Versions**
    ```bash
-   # Install all tool versions defined in .mise.toml
+   # Install all tool versions defined in .mise.toml (when available)
+   # Note: .mise.toml will be created in a future PR
    mise install
    ```
 
 4. **Run Tasks**
    ```bash
-   # List available tasks
+   # List available tasks (when mise tasks are configured)
    mise tasks
    
+   # For now, use make targets:
    # Build the container
-   mise run container
+   make container
    
    # Build image (this will take 2-6 hours on first build)
-   mise run build
+   make build
    ```
 
 ### mise Configuration
 
-The project's `.mise.toml` file (in the repository root) defines:
+The project will use a `.mise.toml` file (in the repository root) to define:
 - Tool versions to install (Python, etc.)
 - Project tasks to run
 - Environment variables
 
-**Note**: The `.mise.toml` file will be created in a future update. Tasks are currently defined in the `Makefile` and will be migrated to `mise` tasks.
+**Note**: The `.mise.toml` file and mise task definitions will be created in a future PR. This documentation describes the planned mise-based workflow. Until then, `make` targets remain the primary way to run project tasks.
 
 ### Environment Variables
 
@@ -285,9 +287,11 @@ DL_DIR=/path/to/downloads
 
 ## Task Runner
 
-`mise` replaces Make as the project's task runner. Tasks are defined in `.mise.toml` at the project root.
+`mise` will replace Make as the project's task runner. Tasks will be defined in `.mise.toml` at the project root.
 
-### Running Tasks
+**Current Status**: Task definitions are being migrated from `Makefile` to `mise`. Until the `.mise.toml` file is created in a future PR, continue using `make` commands. This section documents the planned mise-based workflow.
+
+### Running Tasks (Planned)
 
 ```bash
 # List all available tasks
@@ -306,7 +310,7 @@ mise run kash           # Interactive KAS shell
 mise run version        # Show version
 ```
 
-### Common Tasks
+### Common Tasks (Planned)
 
 | Task | Description |
 |------|-------------|
@@ -317,7 +321,7 @@ mise run version        # Show version
 | `mise run dump` | Dump KAS configuration |
 | `mise run version` | Display build version (via GitVersion) |
 
-**Examples**:
+**Examples (Planned)**:
 ```bash
 # Build for default BSP (x86_64)
 mise run build
@@ -332,7 +336,13 @@ mise run kash BSP=x86_64
 mise run version
 ```
 
-**Note**: During the transition period, `make` targets are still available and will be gradually migrated to `mise` tasks.
+**Current Workflow**: Use equivalent `make` targets until mise migration is complete:
+```bash
+make build              # Build for default BSP
+make build BSP=rk1     # Build for specific BSP
+make kash BSP=x86_64   # Interactive KAS shell
+make version           # Show version
+```
 
 ---
 
@@ -340,54 +350,62 @@ mise run version
 
 ### Basic Build Commands
 
+**Note**: The examples below show the planned `mise run` commands. Until mise tasks are implemented, use the equivalent `make` commands (e.g., `make build` instead of `mise run build`).
+
 #### Build for Default BSP (x86_64)
 ```bash
-mise run build
+# Planned: mise run build
+# Current:
+make build
 ```
 
 #### Build for Specific BSP
 ```bash
 # Available BSPs: x86_64, orin-nx, rk1, soquartz
-mise run build BSP=orin-nx
+# Planned: mise run build BSP=orin-nx
+# Current:
+make build BSP=orin-nx
 ```
 
 #### CI Build (with force checkout and update)
 ```bash
-mise run ci-build
+# Planned: mise run ci-build
+# Current:
+make ci-build
 ```
 
 ### Build Workflow
 
 1. **First Build** (clean workspace):
    ```bash
-   # Build container
-   mise run container
+   # Build container (current: use make)
+   make container
    
    # Initial build (will take 2-6 hours depending on hardware)
-   mise run build BSP=x86_64
+   make build BSP=x86_64
    ```
 
 2. **Incremental Builds** (with sstate cache):
    ```bash
    # Subsequent builds are much faster
-   mise run build BSP=x86_64
+   make build BSP=x86_64
    ```
 
 3. **Clean Build** (remove build artifacts):
    ```bash
    # Remove output artifacts only
-   mise run clean-outputs
+   make clean-outputs
    
    # Full clean (with confirmation)
-   mise run clean-build-all
+   make clean-build-all
    ```
 
 ### Development Workflow
 
 **Interactive KAS Shell**:
 ```bash
-# Start interactive KAS shell
-mise run kash BSP=x86_64
+# Start interactive KAS shell (current: use make)
+make kash BSP=x86_64
 
 # You're now in a BitBake environment
 bitbake core-image-minimal          # Build an image
@@ -400,7 +418,7 @@ bitbake-layers show-recipes         # List recipes
 **Dump Configuration**:
 ```bash
 # Dump KAS configuration to review
-mise run dump BSP=x86_64
+make dump BSP=x86_64
 ```
 
 ---
@@ -489,7 +507,8 @@ To add local customizations without modifying tracked files:
 
 2. **Use in builds**:
    ```bash
-   mise run kash KAS_CONFIG="$(KAS_CONFIG):kas/local.kas.yml"
+   # Current: use make
+   make kash KAS_CONFIG="$(KAS_CONFIG):kas/local.kas.yml"
    ```
 
 ---
@@ -556,14 +575,14 @@ ERROR: No space left on device
 # Check disk usage
 df -h
 
-# Clean old build artifacts
-mise run clean-outputs
+# Clean old build artifacts (current: use make)
+make clean-outputs
 
 # Clean downloads (will re-download on next build)
-mise run clean-downloads
+make clean-downloads
 
 # Clean sstate cache (will rebuild on next build)
-mise run clean-sstate-cache
+make clean-sstate-cache
 
 # Prune Docker images
 docker system prune -a
@@ -582,8 +601,8 @@ ERROR: Checksum mismatch!
 rm -rf build/downloads/<failing-package>*
 rm -rf .cache/sstate/*<failing-package>*
 
-# Retry build
-mise run build
+# Retry build (current: use make)
+make build
 ```
 
 #### Issue: mise not found
@@ -621,8 +640,8 @@ export DOCKER_BUILDKIT=1
 # Clear Docker build cache
 docker builder prune -a
 
-# Rebuild container
-mise run container
+# Rebuild container (current: use make)
+make container
 ```
 
 #### Issue: KAS cannot find layer
@@ -634,11 +653,11 @@ ERROR: Layer 'meta-xxx' is not in the collection
 
 **Solution**:
 ```bash
-# Update kas configuration to fetch all layers
-mise run ci-build
+# Update kas configuration to fetch all layers (current: use make)
+make ci-build
 
 # Or manually in kas shell
-mise run kash
+make kash
 bitbake-layers show-layers  # Verify all layers present
 ```
 
@@ -665,9 +684,9 @@ bitbake-layers show-layers  # Verify all layers present
 
 ### Reduce Disk Usage
 
-1. **Clean old builds regularly**: `mise run clean-outputs`
+1. **Clean old builds regularly**: `make clean-outputs`
 2. **Limit sstate cache size**: Use `sstate-cache-management` script
-3. **Remove build history**: `mise run clean-build-history`
+3. **Remove build history**: `make clean-build-history`
 4. **Share downloads**: Use `DL_DIR` on separate partition
 
 ### Getting More Information
@@ -675,8 +694,8 @@ bitbake-layers show-layers  # Verify all layers present
 #### Enable verbose output
 
 ```bash
-# Verbose mise output
-mise run build BSP=x86_64 --verbose
+# Verbose make output (current)
+make build BSP=x86_64 VERBOSE=1
 
 # KAS debug output (already enabled in Makefile)
 # See KAS_BUILD_OPTS := --log-level debug
@@ -695,8 +714,8 @@ less build/tmp/work/<arch>/<recipe>/<version>/temp/log.do_<task>.<pid>
 #### Debug in KAS shell
 
 ```bash
-# Enter KAS shell
-mise run kash BSP=x86_64
+# Enter KAS shell (current: use make)
+make kash BSP=x86_64
 
 # Run BitBake with debugging
 bitbake -D core-image-minimal
