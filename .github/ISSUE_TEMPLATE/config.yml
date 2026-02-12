@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: Apache-2.0
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/lamawithonel/lamadist/discussions
+    about: Ask questions, share ideas, or discuss LamaDist with the community
+  - name: Documentation
+    url: https://github.com/lamawithonel/lamadist/tree/main/docs
+    about: Check the documentation for guides, architecture, and development information

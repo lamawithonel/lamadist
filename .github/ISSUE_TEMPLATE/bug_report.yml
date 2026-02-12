@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Bug Report
+description: Report a bug or issue with LamaDist
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below to help us diagnose and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Run command '...'
+        2. Observe error '...'
+        3. See issue
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What you expected to happen
+      placeholder: Describe what should happen...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened
+      placeholder: Describe what actually happened...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bsp
+    attributes:
+      label: Target BSP/Hardware
+      description: Which BSP or hardware platform are you using?
+      options:
+        - x86_64
+        - orin-nx
+        - rk1
+        - soquartz
+        - Other (specify in additional context)
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: LamaDist Version
+      description: What version of LamaDist are you using? (run `make version` or check git tag)
+      placeholder: e.g., v0.1.0 or main branch commit sha
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build-env
+    attributes:
+      label: Build Environment
+      description: Where are you building?
+      options:
+        - Linux (Ubuntu 22.04)
+        - Linux (Ubuntu 24.04)
+        - Linux (Other distro)
+        - WSL2
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant Logs
+      description: Please paste any relevant log output (build logs, runtime logs, error messages)
+      placeholder: Paste logs here...
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here (screenshots, configuration files, etc.)
+      placeholder: Any additional information...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues to ensure this is not a duplicate
+          required: true
+        - label: I have provided all requested information
+          required: true
+        - label: I have included relevant logs and error messages
+          required: true

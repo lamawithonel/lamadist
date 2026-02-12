@@ -152,13 +152,41 @@ git push origin feature/your-feature-name
 
 ## Branch Naming Conventions
 
-Use clear, descriptive branch names following this pattern:
+LamaDist uses **JIT Flow**, a hybrid of GitFlow and feature-branch flow that emphasizes just-in-time branching and releasing.
+
+### JIT Flow Overview
+
+**Main Branch (`main`)**:
+- The primary development branch
+- Always contains the latest work
+- Tags on `main` create releases
+- Latest tag on `main` = latest stable version
+- `HEAD` of `main` = latest unstable version
+
+**Feature Branches**:
+- Branch off `main` using any Conventional Commit type as a prefix
+- Examples: `feature/`, `fix/`, `docs/`, `chore/`, `refactor/`, `test/`, `ci/`, `build/`, `perf/`, `security/`, `revert/`, `style/`
+- Merged back into `main` when complete
+- Deleted after merge
+
+**Release Branches (`release/<major>[.minor][-codename]`)**:
+- Created only when a **breaking change** is introduced
+- Forked from the commit **prior** to the breaking change
+- Used for back-porting non-breaking fixes to older versions
+- Recommended format: `release/<major>.<minor>` (e.g., `release/1.0`)
+- Generally recommended to only back-port important fixes, not continue feature development
+- Subsequent releases on a `release/` branch are tagged on that branch
+- Versions in `release/` branches are always behind `main`
+
+### Branch Naming Pattern
 
 ```
 <type>/<short-description>
 ```
 
 ### Types
+
+Any Conventional Commit type can be used as a branch prefix:
 
 - `feature/` - New features or enhancements
 - `fix/` - Bug fixes
@@ -167,9 +195,15 @@ Use clear, descriptive branch names following this pattern:
 - `test/` - Adding or updating tests
 - `chore/` - Maintenance tasks, build changes
 - `security/` - Security fixes or improvements
+- `ci/` - CI/CD changes
+- `build/` - Build system changes
+- `perf/` - Performance improvements
+- `revert/` - Reverting previous changes
+- `style/` - Code style/formatting changes
 
 ### Examples
 
+**Feature branches**:
 ```
 feature/add-k3s-support
 fix/systemd-boot-timeout
@@ -178,6 +212,15 @@ refactor/kas-config-structure
 test/add-image-boot-tests
 chore/update-dependencies
 security/patch-cve-2024-1234
+ci/add-github-actions
+build/update-container-image
+```
+
+**Release branches** (created only for breaking changes):
+```
+release/1.0           # First major release line
+release/1.1           # Second minor release line
+release/2.0-phoenix   # Major release with codename
 ```
 
 ### Branch Naming Guidelines
@@ -191,7 +234,7 @@ security/patch-cve-2024-1234
 
 ## Commit Message Standards
 
-We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification with **strongly encouraged** use of the `[optional scope]`.
 
 ### Format
 
@@ -202,6 +245,8 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 [optional footer(s)]
 ```
+
+**Note**: The `[optional scope]` is strongly encouraged to provide context about which area of the codebase is affected.
 
 ### Types
 
@@ -218,7 +263,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 - `revert`: Revert a previous commit
 - `security`: Security fix or improvement
 
-### Scope (Optional)
+### Scope (Strongly Encouraged)
 
 Specify the area affected by the change:
 
@@ -229,6 +274,19 @@ Specify the area affected by the change:
 - `recipe`: Recipe changes
 - `docker`: Container/Docker changes
 - `docs`: Documentation
+- Or any other relevant scope that describes the affected area
+
+### Git Trailers
+
+Use proper git trailers in the footer, separated from the body by a blank line:
+
+- `Ticket:` — Reference to an issue or ticket (optional)
+- `See:` — Reference to related context, URLs, documentation
+- `Closes:` — Issue this commit closes
+- `Fixes:` — Issue this commit fixes
+- `CVE:` — CVE identifier for security fixes
+- `BREAKING CHANGE:` — Description of breaking change
+- `Signed-off-by:` — DCO sign-off (use `git commit -s`)
 
 ### Examples
 
@@ -240,7 +298,7 @@ feat(recipe): add custom systemd service for monitoring
 Add a new systemd service that monitors system health and reports
 metrics. The service runs every 5 minutes and logs to journald.
 
-Closes #42
+Closes: #42
 
 ---
 
@@ -249,7 +307,8 @@ fix(kas): correct layer dependency order
 The meta-security layer must come before meta-virtualization to
 avoid conflicting package versions.
 
-Fixes #156
+Fixes: #156
+See: https://docs.yoctoproject.org/ref-manual/variables.html
 
 ---
 
@@ -262,9 +321,23 @@ interacts with the initramfs boot process.
 
 security(distro): update kernel to address CVE-2024-1234
 
-Backport security patches for CVE-2024-1234.
+Backport security patches for CVE-2024-1234 from upstream kernel.
 
 CVE: CVE-2024-1234
+Ticket: #789
+See: https://kernel.org/security/CVE-2024-1234
+
+---
+
+feat(distro): add new container orchestration feature
+
+Add support for k3s lightweight Kubernetes distribution.
+
+BREAKING CHANGE: The container runtime has changed from Docker to
+containerd. Existing container configurations must be migrated.
+See migration guide in docs/MIGRATION.md.
+
+Closes: #234
 ```
 
 Bad commit messages:
@@ -275,13 +348,15 @@ Bad commit messages:
 ❌ WIP
 ❌ asdfasdf
 ❌ minor changes
+❌ Fixes #123 (use "Fixes: #123" trailer instead)
 ```
 
 ### Commit Message Guidelines
 
 - **First line**: 50 characters or less, imperative mood ("add" not "added" or "adds")
 - **Body**: Wrap at 72 characters, explain what and why (not how)
-- **Footer**: Reference issues, PRs, CVEs, or breaking changes
+- **Footer**: Use proper git trailers, separated from body by blank line
+- **Scope**: Strongly encouraged to provide context
 - **Sign-off**: Use `git commit -s` to sign off on commits (DCO)
 
 ---
@@ -291,43 +366,22 @@ Bad commit messages:
 ### Before Submitting
 
 - [ ] Code follows Yocto/OE best practices
-- [ ] All commits have clear, descriptive messages
+- [ ] All commits have clear, descriptive messages following Conventional Commits
 - [ ] Branch is up to date with `upstream/main`
 - [ ] Changes have been tested locally
 - [ ] Documentation has been updated
 - [ ] No sensitive information (keys, passwords) in commits
 
-### PR Description Template
+### Creating a Pull Request
 
-```markdown
-## Description
-Brief description of the changes in this PR.
+When you open a pull request, GitHub will automatically populate a PR template. Please fill out all sections of the template completely:
 
-## Type of Change
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
+- **Description**: Explain what changes were made and why
+- **Type of Change**: Check all boxes that apply
+- **Testing**: Describe how you tested the changes
+- **Checklist**: Ensure all items are completed
 
-## Related Issues
-Fixes #(issue number)
-Related to #(issue number)
-
-## Testing
-Describe the testing you've done:
-- [ ] Tested on x86_64
-- [ ] Tested on ARM (specify platform)
-- [ ] Built successfully
-- [ ] Image boots and runs
-
-## Checklist
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings or errors
-- [ ] Any dependent changes have been merged and published
-```
+The PR template is defined in [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md).
 
 ### PR Size Guidelines
 
@@ -539,5 +593,5 @@ Thank you for contributing to LamaDist!
 
 ---
 
-**Last Updated:** 2024  
+**Last Updated:** 2026  
 **Document Version:** 1.0

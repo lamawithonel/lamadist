@@ -21,7 +21,7 @@ LamaDist provides a hardened Linux distribution built with Yocto Project for hom
 - Linux system (Ubuntu 22.04+ recommended) or WSL2
 - Docker 20.10+ with BuildKit
 - 8+ GB RAM, 100+ GB free disk space (SSD recommended)
-- Python 3.12
+- mise — polyglot tool version manager and task runner
 
 ### Build Your First Image
 
@@ -30,28 +30,27 @@ LamaDist provides a hardened Linux distribution built with Yocto Project for hom
 git clone https://github.com/lamawithonel/lamadist.git
 cd lamadist
 
-# Set up Python environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Install mise (if not already installed)
+curl https://mise.run | sh
 
-# Install development tools
-make dev-tools-locked
+# Install tool versions (Python, etc.)
+mise install
 
 # Build the container
-make container
+mise run container
 
 # Build image (this will take 2-6 hours on first build)
-make build BSP=x86_64
+mise run build
 
 # Images will be in: build/tmp/deploy/images/genericx86-64/
 ```
 
 ### Supported Hardware (BSPs)
 
-- **x86_64**: Intel-based systems (`make build BSP=x86_64`)
-- **orin-nx**: NVIDIA Jetson Orin NX (`make build BSP=orin-nx`)
-- **rk1**: Radxa RK1 (`make build BSP=rk1`)
-- **soquartz**: Pine64 SOQuartz (`make build BSP=soquartz`)
+- **x86_64**: Intel-based systems (`mise run build BSP=x86_64`)
+- **orin-nx**: NVIDIA Jetson Orin NX (`mise run build BSP=orin-nx`)
+- **rk1**: Radxa RK1 (`mise run build BSP=rk1`)
+- **soquartz**: Pine64 SOQuartz (`mise run build BSP=soquartz`)
 
 ## Documentation
 
@@ -65,11 +64,12 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 ### Key Commands
 
 ```bash
-make help              # Show all available targets
-make build BSP=x86_64  # Build for x86_64
-make kash              # Interactive shell in build environment
-make dump              # Dump KAS configuration
-make version           # Show build version
+mise tasks             # List all available tasks
+mise run build         # Build for default BSP (x86_64)
+mise run build BSP=rk1 # Build for specific BSP
+mise run kash          # Interactive shell in build environment
+mise run dump          # Dump KAS configuration
+mise run version       # Show build version
 ```
 
 See [`docs/TOOLING.md`](docs/TOOLING.md) for detailed usage information.
