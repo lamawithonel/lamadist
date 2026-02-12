@@ -37,9 +37,9 @@ This project follows a code of conduct that we expect all contributors to adhere
 Before contributing, ensure you have:
 
 1. **Development Environment**: Linux system (Ubuntu 22.04 recommended) or WSL2
-2. **Docker**: For containerized builds
-3. **Git**: Version control
-4. **Python 3.12**: For development tools
+2. **mise**: Polyglot tool manager (https://mise.jdx.dev)
+3. **podman** or Docker: Container runtime for builds
+4. **Git**: Version control
 5. **Basic Knowledge**: Familiarity with Yocto/OE, Linux, and Git
 
 See [TOOLING.md](TOOLING.md) for detailed setup instructions.
@@ -62,23 +62,14 @@ See [TOOLING.md](TOOLING.md) for detailed setup instructions.
 
 3. **Install Development Tools**
    ```bash
-   # Create Python virtual environment
-   python3 -m venv .venv
-   source .venv/bin/activate
-   
-   # Install dependencies
-   make dev-tools-locked
+   # Install mise-managed tools (Python, etc.)
+   mise install
    ```
 
-4. **Build the Container**
-   ```bash
-   make container
-   ```
-
-5. **Verify Setup**
+4. **Verify Setup**
    ```bash
    # Try building for default BSP (x86_64)
-   make build
+   mise run build --bsp x86_64
    ```
 
 ---
@@ -102,7 +93,7 @@ git checkout -b feature/your-feature-name
 
 - Make focused, logical changes
 - Follow Yocto/OE best practices (see below)
-- Test your changes locally
+- Test your changes locally with `mise run build --bsp <bsp>`
 - Update documentation if needed
 
 ### 3. Commit Your Changes
@@ -111,12 +102,13 @@ git checkout -b feature/your-feature-name
 # Stage your changes
 git add <files>
 
-# Commit with a descriptive message
-git commit -m "type: brief description
+# Commit with a descriptive message including trailers
+git commit -m "type(scope): brief description
 
 Detailed explanation if needed.
 
-Fixes #123"
+Fixes: #123
+See: https://relevant-url.com"
 ```
 
 See [Commit Message Standards](#commit-message-standards) below.
@@ -137,7 +129,7 @@ git merge upstream/main
 ### 5. Push to Your Fork
 
 ```bash
-git push origin feature/your-feature-name
+git push origin <type>/<your-feature-name>
 ```
 
 ### 6. Open a Pull Request
@@ -152,14 +144,39 @@ git push origin feature/your-feature-name
 
 ## Branch Naming Conventions
 
-Use clear, descriptive branch names following this pattern:
+LamaDist uses **JIT Flow**, a hybrid branching strategy that combines the simplicity of feature-branch flow with the flexibility to maintain release branches only when needed.
 
+### JIT Flow Overview
+
+```
+main (latest unstable)
+  │
+  ├── feature/add-k3s-support ──┐
+  ├── fix/systemd-boot ─────────┼─→ (merged to main)
+  ├── docs/update-architecture ─┘
+  │
+  ├── v1.0.0 (tag: first release)
+  │
+  ├── feature/breaking-change ───→ (introduces incompatibility)
+  │   │
+  │   └── release/1.0 (forked from commit before breaking change)
+  │       │
+  │       ├── v1.0.1 (tag: patch on release branch)
+  │       └── v1.0.2 (tag: another patch)
+  │
+  ├── v2.0.0 (tag: new release with breaking change)
+  │
+  └── HEAD (latest unstable)
+```
+
+### Feature Branch Types
+
+All feature branches use the pattern:
 ```
 <type>/<short-description>
 ```
 
-### Types
-
+**Valid type prefixes** (any Conventional Commit type):
 - `feature/` - New features or enhancements
 - `fix/` - Bug fixes
 - `docs/` - Documentation changes
@@ -167,6 +184,48 @@ Use clear, descriptive branch names following this pattern:
 - `test/` - Adding or updating tests
 - `chore/` - Maintenance tasks, build changes
 - `security/` - Security fixes or improvements
+- `ci/` - CI/CD changes
+- `build/` - Build system changes
+- `perf/` - Performance improvements
+- `revert/` - Reverting previous changes
+- `style/` - Code style/formatting changes
+
+**Feature branches**:
+- Branch off `main`
+- Merge back to `main` via Pull Request
+- Deleted after merge
+
+### Release Branches
+
+**Release branches** are created only when needed:
+```
+release/<major>[.<minor>][-codename]
+```
+
+**When to create a release branch**:
+- A breaking change is about to be merged to `main`
+- Fork from the commit **prior** to the breaking change
+- Use format: `release/1.0` or `release/1.0-stable`
+
+**Release branch behavior**:
+- Receives important bug fixes and security patches (backported from `main`)
+- Should NOT receive new features
+- Always behind `main` in terms of features
+- Tagged for patch releases (e.g., `v1.0.1`, `v1.0.2`)
+
+### Tags and Releases
+
+- **Tags on `main`**: Create new releases (e.g., `v1.0.0`, `v2.0.0`)
+- **Tags on release branches**: Create patch releases (e.g., `v1.0.1`, `v1.0.2`)
+- **Latest stable**: Latest tag on `main`
+- **Latest unstable**: `HEAD` of `main`
+
+### Branch Naming Guidelines
+
+- Use lowercase letters
+- Use hyphens to separate words (not underscores or spaces)
+- Keep names concise but descriptive
+- Include issue number if applicable: `fix/123-boot-failure`
 
 ### Examples
 
@@ -178,20 +237,16 @@ refactor/kas-config-structure
 test/add-image-boot-tests
 chore/update-dependencies
 security/patch-cve-2024-1234
+ci/add-github-actions
+build/migrate-to-mise
+perf/optimize-build-cache
 ```
-
-### Branch Naming Guidelines
-
-- Use lowercase letters
-- Use hyphens to separate words (not underscores or spaces)
-- Keep names concise but descriptive
-- Include issue number if applicable: `fix/123-boot-failure`
 
 ---
 
 ## Commit Message Standards
 
-We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification with **strongly encouraged** scope usage and git trailers for metadata.
 
 ### Format
 
@@ -218,7 +273,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 - `revert`: Revert a previous commit
 - `security`: Security fix or improvement
 
-### Scope (Optional)
+### Scope (Strongly Encouraged)
 
 Specify the area affected by the change:
 
@@ -227,12 +282,33 @@ Specify the area affected by the change:
 - `distro`: Distribution configuration
 - `machine`: Machine configuration
 - `recipe`: Recipe changes
-- `docker`: Container/Docker changes
+- `container`: Container/Docker/Podman changes
 - `docs`: Documentation
+- `tooling`: Build tooling (mise, Makefile)
+- `github`: GitHub templates, workflows
+
+### Git Trailers
+
+Git trailers provide structured metadata and should be placed in the footer, separated from the body by a blank line:
+
+**Common trailers**:
+- `Fixes: #<issue>` - Links to a GitHub issue this commit fixes (closes automatically)
+- `Closes: #<issue>` - Alternative to Fixes for closing issues
+- `See: <url>` - Reference to related documentation, PRs, or resources
+- `Ticket: <ticket-id>` - Link to external tracking system (optional)
+- `CVE: <cve-id>` - Reference to CVE being addressed
+- `Signed-off-by: Name <email>` - Developer Certificate of Origin
+- `Co-authored-by: Name <email>` - Credit for co-authors
+
+**Trailer format rules**:
+- Use `Trailer: value` format (colon-space separator)
+- Place in footer, separated from body by blank line
+- One trailer per line
+- Do NOT use bare `Fixes #123` in body (use `Fixes: #123` trailer)
 
 ### Examples
 
-Good commit messages:
+Good commit messages with trailers:
 
 ```
 feat(recipe): add custom systemd service for monitoring
@@ -240,7 +316,8 @@ feat(recipe): add custom systemd service for monitoring
 Add a new systemd service that monitors system health and reports
 metrics. The service runs every 5 minutes and logs to journald.
 
-Closes #42
+Closes: #42
+See: https://systemd.io/JOURNAL_NATIVE_PROTOCOL/
 
 ---
 
@@ -249,7 +326,7 @@ fix(kas): correct layer dependency order
 The meta-security layer must come before meta-virtualization to
 avoid conflicting package versions.
 
-Fixes #156
+Fixes: #156
 
 ---
 
@@ -258,13 +335,28 @@ docs(architecture): update security architecture section
 Add detailed explanation of dm-verity integration and how it
 interacts with the initramfs boot process.
 
+See: https://www.kernel.org/doc/html/latest/admin-guide/device-mapper/verity.html
+
 ---
 
 security(distro): update kernel to address CVE-2024-1234
 
-Backport security patches for CVE-2024-1234.
+Backport security patches for CVE-2024-1234 affecting the
+network stack.
 
 CVE: CVE-2024-1234
+Fixes: #287
+See: https://nvd.nist.gov/vuln/detail/CVE-2024-1234
+
+---
+
+build(tooling): migrate to mise task runner
+
+Replace Make targets with mise tasks for improved developer
+experience and shell autocompletion support.
+
+See: https://mise.jdx.dev/
+Ticket: PROJ-456
 ```
 
 Bad commit messages:
@@ -275,13 +367,15 @@ Bad commit messages:
 ❌ WIP
 ❌ asdfasdf
 ❌ minor changes
+❌ Fixed #123 (should use Fixes: #123 as trailer)
 ```
 
 ### Commit Message Guidelines
 
 - **First line**: 50 characters or less, imperative mood ("add" not "added" or "adds")
+- **Scope**: Strongly encouraged for all commits
 - **Body**: Wrap at 72 characters, explain what and why (not how)
-- **Footer**: Reference issues, PRs, CVEs, or breaking changes
+- **Footer**: Use git trailers for all metadata
 - **Sign-off**: Use `git commit -s` to sign off on commits (DCO)
 
 ---
@@ -291,43 +385,21 @@ Bad commit messages:
 ### Before Submitting
 
 - [ ] Code follows Yocto/OE best practices
-- [ ] All commits have clear, descriptive messages
+- [ ] All commits have clear, descriptive messages with proper trailers
 - [ ] Branch is up to date with `upstream/main`
 - [ ] Changes have been tested locally
 - [ ] Documentation has been updated
 - [ ] No sensitive information (keys, passwords) in commits
+- [ ] Commits follow Conventional Commits with scope (strongly encouraged) and git trailers
 
-### PR Description Template
+### PR Template
 
-```markdown
-## Description
-Brief description of the changes in this PR.
-
-## Type of Change
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-
-## Related Issues
-Fixes #(issue number)
-Related to #(issue number)
-
-## Testing
-Describe the testing you've done:
-- [ ] Tested on x86_64
-- [ ] Tested on ARM (specify platform)
-- [ ] Built successfully
-- [ ] Image boots and runs
-
-## Checklist
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings or errors
-- [ ] Any dependent changes have been merged and published
-```
+Pull requests should use the template in `.github/PULL_REQUEST_TEMPLATE.md` which includes:
+- Description of changes
+- Type of change (bug fix, feature, breaking change, etc.)
+- Related issues (with proper `Fixes: #123` or `Closes: #123` format)
+- Testing checklist
+- General PR checklist
 
 ### PR Size Guidelines
 
@@ -442,10 +514,10 @@ Before submitting a PR, test your changes:
 
 ```bash
 # Build for your target BSP
-make build BSP=x86_64
+mise run build --bsp x86_64
 
-# Test in QEMU (if applicable)
-runqemu nographic
+# Interactive shell for debugging
+mise run shell --bsp x86_64
 
 # Check for warnings/errors in build logs
 ```
@@ -539,5 +611,5 @@ Thank you for contributing to LamaDist!
 
 ---
 
-**Last Updated:** 2024  
-**Document Version:** 1.0
+**Last Updated:** 2026  
+**Document Version:** 2.0
