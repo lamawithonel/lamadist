@@ -8,7 +8,7 @@ Thank you for your interest in contributing to LamaDist! This document provides 
 - [Code of Conduct](#code-of-conduct)
 - [Getting Started](#getting-started)
 - [Development Workflow](#development-workflow)
-- [Branch Naming Conventions](#branch-naming-conventions)
+- [Branching Strategy (JIT Flow)](#branching-strategy-jit-flow)
 - [Commit Message Standards](#commit-message-standards)
 - [Pull Request Process](#pull-request-process)
 - [Code Review Expectations](#code-review-expectations)
@@ -37,9 +37,9 @@ This project follows a code of conduct that we expect all contributors to adhere
 Before contributing, ensure you have:
 
 1. **Development Environment**: Linux system (Ubuntu 22.04 recommended) or WSL2
-2. **Docker**: For containerized builds
-3. **Git**: Version control
-4. **Python 3.12**: For development tools
+2. **mise**: Polyglot tool manager and task runner ([mise.jdx.dev](https://mise.jdx.dev/))
+3. **podman** (preferred) or Docker: For containerized builds
+4. **Git**: Version control
 5. **Basic Knowledge**: Familiarity with Yocto/OE, Linux, and Git
 
 See [TOOLING.md](TOOLING.md) for detailed setup instructions.
@@ -62,23 +62,19 @@ See [TOOLING.md](TOOLING.md) for detailed setup instructions.
 
 3. **Install Development Tools**
    ```bash
-   # Create Python virtual environment
-   python3 -m venv .venv
-   source .venv/bin/activate
-   
-   # Install dependencies
-   make dev-tools-locked
+   # mise manages all tooling — no Python, venv, or Make needed on the host
+   mise install
    ```
 
 4. **Build the Container**
    ```bash
-   make container
+   mise run container
    ```
 
 5. **Verify Setup**
    ```bash
    # Try building for default BSP (x86_64)
-   make build
+   mise run build --bsp x86_64
    ```
 
 ---
@@ -95,7 +91,7 @@ git checkout main
 git pull upstream main
 
 # Create and checkout a new feature branch
-git checkout -b feature/your-feature-name
+git checkout -b feat/your-feature-name
 ```
 
 ### 2. Make Your Changes
@@ -111,12 +107,13 @@ git checkout -b feature/your-feature-name
 # Stage your changes
 git add <files>
 
-# Commit with a descriptive message
-git commit -m "type: brief description
+# Commit with a descriptive message (scope is strongly encouraged)
+git commit -m "feat(recipe): add custom monitoring service
 
-Detailed explanation if needed.
+Add a new systemd service that monitors system health.
 
-Fixes #123"
+Ticket: LAMA-42
+See: https://example.com/monitoring-design"
 ```
 
 See [Commit Message Standards](#commit-message-standards) below.
@@ -137,7 +134,7 @@ git merge upstream/main
 ### 5. Push to Your Fork
 
 ```bash
-git push origin feature/your-feature-name
+git push origin feat/your-feature-name
 ```
 
 ### 6. Open a Pull Request
@@ -145,38 +142,82 @@ git push origin feature/your-feature-name
 - Go to the GitHub repository
 - Click "New Pull Request"
 - Select your fork and branch
-- Fill out the PR template with all required information
+- Fill out the PR template (see [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md))
 - Link any related issues
 
 ---
 
-## Branch Naming Conventions
+## Branching Strategy (JIT Flow)
 
-Use clear, descriptive branch names following this pattern:
+LamaDist uses **JIT Flow** — a lightweight branching strategy built around Conventional Commit type prefixes and linear history on `main`.
+
+### Feature Branches
+
+Feature branches branch off `main` using the pattern:
 
 ```
 <type>/<short-description>
 ```
 
-### Types
+Where `<type>` is any [Conventional Commit](#commit-message-standards) type prefix:
 
-- `feature/` - New features or enhancements
-- `fix/` - Bug fixes
-- `docs/` - Documentation changes
-- `refactor/` - Code refactoring
-- `test/` - Adding or updating tests
-- `chore/` - Maintenance tasks, build changes
-- `security/` - Security fixes or improvements
+- `feat/` — New features or enhancements
+- `fix/` — Bug fixes
+- `docs/` — Documentation changes
+- `refactor/` — Code refactoring
+- `test/` — Adding or updating tests
+- `chore/` — Maintenance tasks, build changes
+- `ci/` — CI/CD changes
+- `build/` — Build system changes
+- `perf/` — Performance improvements
+- `security/` — Security fixes or improvements
 
-### Examples
+Feature branches merge back into `main` via Pull Request.
+
+### Releases and Tags
+
+- **Tags on `main`** create releases
+- **Latest stable version** = latest tag on `main`
+- **Latest unstable** = HEAD of `main`
+
+### Breaking Changes and Release Branches
+
+When a **breaking change** is introduced on `main`, the commit **prior** to the breaking change is forked into a new release branch:
 
 ```
-feature/add-k3s-support
+release/<major>[.minor][-codename]
+```
+
+- Non-breaking changes may be backported to `release/` branches
+- Prefer `release/<major>.<minor>` format for branches receiving only important fix backports
+- Subsequent releases for a `release/` branch are tagged on that branch
+
+### JIT Flow Diagram
+
+```
+main ─────●─────●─────●─────●──── (breaking change) ────●─────●──▶
+          │           │     │                             │
+          │           │     └── tag: v1.0.0               └── tag: v2.0.0
+          │           │
+          │           └── feat/add-k3s ──(PR)──▶ main
+          │
+          └── release/1.x  ◀── fork from commit prior to breaking change
+                │
+                └── tag: v1.0.1 (backported fix)
+```
+
+### Branch Naming Examples
+
+```
+feat/add-k3s-support
 fix/systemd-boot-timeout
 docs/update-architecture
 refactor/kas-config-structure
 test/add-image-boot-tests
 chore/update-dependencies
+ci/add-build-matrix
+build/migrate-to-mise
+perf/optimize-sstate-cache
 security/patch-cve-2024-1234
 ```
 
@@ -191,7 +232,7 @@ security/patch-cve-2024-1234
 
 ## Commit Message Standards
 
-We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+We follow the [Conventional Commits](https://www.conventionalcommits.org/) specification. The `[optional scope]` is **strongly encouraged**.
 
 ### Format
 
@@ -200,7 +241,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 
 [optional body]
 
-[optional footer(s)]
+[optional footer(s) / git trailers]
 ```
 
 ### Types
@@ -218,7 +259,7 @@ We follow the [Conventional Commits](https://www.conventionalcommits.org/) speci
 - `revert`: Revert a previous commit
 - `security`: Security fix or improvement
 
-### Scope (Optional)
+### Scope (Strongly Encouraged)
 
 Specify the area affected by the change:
 
@@ -227,8 +268,23 @@ Specify the area affected by the change:
 - `distro`: Distribution configuration
 - `machine`: Machine configuration
 - `recipe`: Recipe changes
-- `docker`: Container/Docker changes
+- `container`: Container/build environment changes
 - `docs`: Documentation
+- `tooling`: Build tooling (mise, podman, etc.)
+
+### Git Trailers
+
+Use [git trailers](https://git-scm.com/docs/git-interpret-trailers) in the footer section of your commit messages to provide structured metadata:
+
+| Trailer | Purpose | Example |
+|---------|---------|---------|
+| `See:` | Reference related resources | `See: https://docs.yoctoproject.org/...` |
+| `Ticket:` | Link to external tracker (optional) | `Ticket: LAMA-42` |
+| `Fixes:` | Close an issue with this commit | `Fixes: #156` |
+| `Closes:` | Close a PR or issue | `Closes: #42` |
+| `CVE:` | Reference a CVE identifier | `CVE: CVE-2024-1234` |
+| `Signed-off-by:` | Developer Certificate of Origin | `Signed-off-by: Name <email>` |
+| `Co-authored-by:` | Credit co-authors | `Co-authored-by: Name <email>` |
 
 ### Examples
 
@@ -240,31 +296,36 @@ feat(recipe): add custom systemd service for monitoring
 Add a new systemd service that monitors system health and reports
 metrics. The service runs every 5 minutes and logs to journald.
 
-Closes #42
+Closes: #42
+Signed-off-by: Jane Doe <jane@example.com>
+```
 
----
-
+```
 fix(kas): correct layer dependency order
 
 The meta-security layer must come before meta-virtualization to
 avoid conflicting package versions.
 
-Fixes #156
+Fixes: #156
+See: https://docs.yoctoproject.org/dev/dev-manual/layers.html
+```
 
----
-
+```
 docs(architecture): update security architecture section
 
 Add detailed explanation of dm-verity integration and how it
 interacts with the initramfs boot process.
 
----
+Ticket: LAMA-99
+```
 
+```
 security(distro): update kernel to address CVE-2024-1234
 
 Backport security patches for CVE-2024-1234.
 
 CVE: CVE-2024-1234
+Signed-off-by: Jane Doe <jane@example.com>
 ```
 
 Bad commit messages:
@@ -280,8 +341,9 @@ Bad commit messages:
 ### Commit Message Guidelines
 
 - **First line**: 50 characters or less, imperative mood ("add" not "added" or "adds")
+- **Scope**: Strongly encouraged — specify the component affected
 - **Body**: Wrap at 72 characters, explain what and why (not how)
-- **Footer**: Reference issues, PRs, CVEs, or breaking changes
+- **Footer**: Use git trailers for references, issues, CVEs, and sign-offs
 - **Sign-off**: Use `git commit -s` to sign off on commits (DCO)
 
 ---
@@ -291,43 +353,16 @@ Bad commit messages:
 ### Before Submitting
 
 - [ ] Code follows Yocto/OE best practices
-- [ ] All commits have clear, descriptive messages
+- [ ] All commits have clear, descriptive messages with scopes
 - [ ] Branch is up to date with `upstream/main`
 - [ ] Changes have been tested locally
 - [ ] Documentation has been updated
 - [ ] No sensitive information (keys, passwords) in commits
+- [ ] Commit messages follow Conventional Commits with git trailers
 
-### PR Description Template
+### PR Template
 
-```markdown
-## Description
-Brief description of the changes in this PR.
-
-## Type of Change
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] Documentation update
-
-## Related Issues
-Fixes #(issue number)
-Related to #(issue number)
-
-## Testing
-Describe the testing you've done:
-- [ ] Tested on x86_64
-- [ ] Tested on ARM (specify platform)
-- [ ] Built successfully
-- [ ] Image boots and runs
-
-## Checklist
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings or errors
-- [ ] Any dependent changes have been merged and published
-```
+Use the PR template at [`.github/PULL_REQUEST_TEMPLATE.md`](../.github/PULL_REQUEST_TEMPLATE.md) when opening a pull request. The template is automatically loaded by GitHub.
 
 ### PR Size Guidelines
 
@@ -442,7 +477,7 @@ Before submitting a PR, test your changes:
 
 ```bash
 # Build for your target BSP
-make build BSP=x86_64
+mise run build --bsp x86_64
 
 # Test in QEMU (if applicable)
 runqemu nographic
@@ -539,5 +574,5 @@ Thank you for contributing to LamaDist!
 
 ---
 
-**Last Updated:** 2024  
-**Document Version:** 1.0
+**Last Updated:** 2026  
+**Document Version:** 2.0

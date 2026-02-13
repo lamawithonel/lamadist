@@ -34,26 +34,35 @@ The development is organized into phases, with each phase building upon the prev
 - Documentation is well-structured with clear Markdown formatting
 
 #### 0.2 Development Standards
-- [ ] Define code review process and standards
-- [ ] Establish commit message conventions
-- [ ] Define branch naming strategy
-- [ ] Create PR templates
+- [x] Define code review process and standards
+- [x] Establish commit message conventions (Conventional Commits with git trailers)
+- [x] Define branch naming strategy (JIT Flow)
+- [x] Create PR templates
+- [x] Create issue templates
 
 **Acceptance Criteria:**
 - Contribution guidelines document all development standards
 - Standards are consistent with Yocto/OE best practices
 - Clear examples provided for common scenarios
+- JIT Flow branching strategy documented with examples and diagram
+- Git trailer conventions documented with examples
 
 #### 0.3 Tooling Setup
-- [ ] Document required tools and versions
-- [ ] Create developer environment setup guide
-- [ ] Document Make target usage
-- [ ] Add troubleshooting section for common setup issues
+- [x] Document required tools and versions (mise + podman)
+- [x] Create developer environment setup guide (mise-based workflow)
+- [x] Document mise task runner usage
+- [x] Add troubleshooting section for common setup issues
+- [ ] Implement mise task definitions (`.mise.toml`)
+- [ ] Migrate container Python dependencies to `uv` + `pyproject.toml`
+- [ ] Validate QEMU launch from build container with SPICE/VNC viewer passthrough
 
 **Acceptance Criteria:**
-- New developers can set up environment from documentation
-- All required tools are listed with version requirements
+- New developers can set up environment from documentation using only `mise` and `podman`
+- All mise tasks are documented with flags and autocompletion support
 - Common issues have documented solutions
+- QEMU images can be tested from the build container with graphical output via SPICE or VNC
+
+> **Note:** Documentation describes the target tooling state. The existing `Makefile` remains functional during the transition. Implementation of `.mise.toml` and `pyproject.toml` migration are tracked as separate tasks above.
 
 ---
 
@@ -169,11 +178,13 @@ The development is organized into phases, with each phase building upon the prev
 - [ ] Create tests for custom recipes
 - [ ] Validate package installations
 - [ ] Test image boot and functionality
+- [ ] Configure QEMU testing with SPICE/VNC viewer passthrough from build container
 
 **Acceptance Criteria:**
 - All custom recipes have basic tests
 - Images can be tested in QEMU
 - Test results are documented
+- QEMU graphical output accessible from host via SPICE or VNC when testing from within the build container
 
 ---
 
@@ -266,12 +277,14 @@ The development is organized into phases, with each phase building upon the prev
 - [ ] Test images on RK1 hardware
 - [ ] Test images on SOQuartz hardware
 - [ ] Document hardware-specific issues and workarounds
+- [ ] Establish QEMU-to-host display passthrough (SPICE/VNC) for graphical mode testing
 
 **Acceptance Criteria:**
 - Images boot successfully on target hardware
 - All major hardware features are functional
 - Issues are documented with workarounds
 - Hardware-specific configurations are validated
+- Graphical display modes can be tested via SPICE/VNC viewer from QEMU inside the build container
 
 #### 4.2 Bootloader Integration
 - [ ] Configure and test systemd-boot for x86_64 (fallback for non-UKI boot)
@@ -456,5 +469,5 @@ Additional phases may be defined as the project matures:
 
 ---
 
-**Last Updated:** 2024  
+**Last Updated:** 2026  
 **Document Owner:** LamaDist Project Maintainer
