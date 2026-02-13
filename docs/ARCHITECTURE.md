@@ -33,33 +33,21 @@ The distribution targets multiple hardware platforms with unified configuration 
 
 ### High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                     LamaDist System                          │
-├─────────────────────────────────────────────────────────────┤
-│                                                               │
-│  ┌─────────────┐  ┌──────────────┐  ┌──────────────┐       │
-│  │   User       │  │  Container   │  │   System     │       │
-│  │  Services    │  │  Workloads   │  │  Services    │       │
-│  │             │  │    (k3s)     │  │  (systemd)   │       │
-│  └─────────────┘  └──────────────┘  └──────────────┘       │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │           System Security Layer                      │   │
-│  │  SELinux | IMA/EVM | dm-verity | LUKS | TPM        │   │
-│  └─────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │           Linux Kernel (6.6 LTS)                     │   │
-│  └─────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │  Boot Layer: UKI Direct (UEFI) / Bootloader (ARM)   │   │
-│  │           (systemd-boot / U-Boot)                    │   │
-│  └─────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │           Hardware Platform                          │   │
-│  │  x86_64 | ARM64 (Orin NX, RK1, SOQuartz)            │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph lamadist["LamaDist System"]
+        direction TB
+        subgraph app["Application Layer"]
+            us["User Services"]
+            cw["Container Workloads (k3s)"]
+            ss["System Services (systemd)"]
+        end
+        sec["System Security Layer\nSELinux · IMA/EVM · dm-verity · LUKS · TPM"]
+        kernel["Linux Kernel (6.6 LTS)"]
+        boot["Boot Layer: UKI Direct (UEFI) / Bootloader\n(systemd-boot / U-Boot)"]
+        hw["Hardware Platform\nx86_64 · ARM64 (Orin NX, RK1, SOQuartz)"]
+        app --> sec --> kernel --> boot --> hw
+    end
 ```
 
 ### Core Components
@@ -213,31 +201,12 @@ Key files:
 
 LamaDist uses KAS (Setup tool for bitbake based projects) for declarative, reproducible builds.
 
-```
-┌────────────────────────────────────────────────────────┐
-│                  Build Orchestration                    │
-├────────────────────────────────────────────────────────┤
-│                                                          │
-│  mise run → Podman Container → KAS → BitBake → OE      │
-│                                                          │
-│  ┌──────────┐   ┌──────────────┐   ┌───────────────┐  │
-│  │ mise     │──▶│ Build        │──▶│ KAS Config    │  │
-│  │ Tasks    │   │ Container    │   │ (YAML)        │  │
-│  └──────────┘   │ (Podman)     │   └───────────────┘  │
-│                 └──────────────┘           │           │
-│                                             ▼           │
-│                                    ┌────────────────┐  │
-│                                    │ BitBake        │  │
-│                                    │ (Build Engine) │  │
-│                                    └────────────────┘  │
-│                                             │           │
-│                                             ▼           │
-│                                    ┌────────────────┐  │
-│                                    │ Build Outputs  │  │
-│                                    │ (Images, RPMs) │  │
-│                                    └────────────────┘  │
-│                                                          │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    mise["mise\nTasks"] --> container["Build Container\n(Podman)"]
+    container --> kas["KAS Config\n(YAML)"]
+    kas --> bitbake["BitBake\n(Build Engine)"]
+    bitbake --> outputs["Build Outputs\n(Images, RPMs)"]
 ```
 
 ### Build Container
@@ -384,76 +353,29 @@ LamaDist supports multiple hardware platforms:
 
 ### Build-Time Dependencies
 
-```
-┌────────────────────────────────────────────────────────┐
-│                 Build System Components                 │
-├────────────────────────────────────────────────────────┤
-│                                                          │
-│  pyproject.toml ──▶ uv pip compile                      │
-│                         │                                │
-│                         ▼                                │
-│              container/requirements.txt                   │
-│                         │                                │
-│                         ▼                                │
-│                ┌────────────────┐                        │
-│                │ Build Container│                        │
-│                │   (Podman)     │                        │
-│                └────────────────┘                        │
-│                         │                                │
-│                         ▼                                │
-│  ┌──────────────┐  ┌────────────────┐                   │
-│  │ Dev Tools    │  │  KAS + BitBake │                   │
-│  │ (Host: mise  │  └────────────────┘                   │
-│  │  + podman)   │          │                             │
-│  └──────────────┘          ▼                             │
-│                  ┌────────────────────┐                  │
-│  kas/*.yml ─────▶│ Yocto Build System │                  │
-│  meta-lamadist/ ─▶│ (BitBake + Layers) │                  │
-│                  └────────────────────┘                  │
-│                           │                              │
-│                           ▼                              │
-│                  ┌────────────────────┐                  │
-│                  │  Build Outputs     │                  │
-│                  │  (Images, Packages)│                  │
-│                  └────────────────────┘                  │
-│                                                          │
-└────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    pyproject["pyproject.toml"] --> uv["uv pip compile"]
+    uv --> reqs["container/requirements.txt"]
+    reqs --> container["Build Container\n(Podman)"]
+    container --> kas_bb["KAS + BitBake"]
+    devtools["Dev Tools\n(Host: mise + podman)"]
+    kasfiles["kas/*.yml"] --> yocto["Yocto Build System\n(BitBake + Layers)"]
+    metalamadist["meta-lamadist/"] --> yocto
+    kas_bb --> yocto
+    yocto --> outputs["Build Outputs\n(Images, Packages)"]
 ```
 
 ### Runtime Dependencies
 
-```
-┌────────────────────────────────────────────────┐
-│           LamaDist Runtime Stack                │
-├────────────────────────────────────────────────┤
-│                                                  │
-│  Hardware                                        │
-│    ↓                                            │
-│  UEFI / Bootloader                              │
-│  (UKI direct boot or systemd-boot / U-Boot)    │
-│    ↓                                            │
-│  Linux Kernel (6.6 LTS)                        │
-│    ↓                                            │
-│  initramfs (dm-verity verification)            │
-│    ↓                                            │
-│  systemd (init)                                 │
-│    ↓                                            │
-│  ┌────────────────────────────────────────┐   │
-│  │ System Services                         │   │
-│  │  • SELinux (refpolicy-targeted)        │   │
-│  │  • IMA/EVM (integrity)                 │   │
-│  │  • systemd services                    │   │
-│  │  • Network (systemd-networkd)          │   │
-│  └────────────────────────────────────────┘   │
-│    ↓                                            │
-│  ┌────────────────────────────────────────┐   │
-│  │ Application Layer                       │   │
-│  │  • Container workloads (k3s)           │   │
-│  │  • Kubernetes pods and services        │   │
-│  │  • User services                        │   │
-│  └────────────────────────────────────────┘   │
-│                                                  │
-└────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    hw["Hardware"] --> uefi["UEFI / Bootloader\n(UKI direct boot or systemd-boot / U-Boot)"]
+    uefi --> kernel["Linux Kernel (6.6 LTS)"]
+    kernel --> initramfs["initramfs\n(dm-verity verification)"]
+    initramfs --> systemd["systemd (init)"]
+    systemd --> syssvcs["System Services\n• SELinux (refpolicy-targeted)\n• IMA/EVM (integrity)\n• systemd services\n• Network (systemd-networkd)"]
+    syssvcs --> appsvcs["Application Layer\n• Container workloads (k3s)\n• Kubernetes pods and services\n• User services"]
 ```
 
 ### Host Configuration
@@ -549,35 +471,24 @@ LamaDist configures the fullest set of boot integrity protection available:
 ### 2. Secure Boot Chain
 
 **With UKI Direct Boot (preferred on UEFI systems):**
-```
-Hardware Root of Trust (TPM/UEFI)
-  ↓
-UEFI Firmware (with Secure Boot)
-  ↓
-UKI (Unified Kernel Image) - kernel + initramfs + cmdline (signed, booted directly)
-  ↓
-dm-verity verified rootfs
-  ↓
-IMA/EVM verified files
-  ↓
-SELinux enforced policies
+```mermaid
+flowchart TD
+    rot["Hardware Root of Trust\n(TPM/UEFI)"] --> firmware["UEFI Firmware\n(with Secure Boot)"]
+    firmware --> uki["UKI (Unified Kernel Image)\nkernel + initramfs + cmdline\n(signed, booted directly)"]
+    uki --> verity["dm-verity verified rootfs"]
+    verity --> ima["IMA/EVM verified files"]
+    ima --> selinux["SELinux enforced policies"]
 ```
 
 **With Traditional Bootloader (fallback or non-UKI systems):**
-```
-Hardware Root of Trust (TPM/UEFI)
-  ↓
-UEFI Firmware (with Secure Boot)
-  ↓
-Bootloader (signed, systemd-boot)
-  ↓
-Kernel + initramfs (signed)
-  ↓
-dm-verity verified rootfs
-  ↓
-IMA/EVM verified files
-  ↓
-SELinux enforced policies
+```mermaid
+flowchart TD
+    rot["Hardware Root of Trust\n(TPM/UEFI)"] --> firmware["UEFI Firmware\n(with Secure Boot)"]
+    firmware --> bootloader["Bootloader\n(signed, systemd-boot)"]
+    bootloader --> kernel["Kernel + initramfs\n(signed)"]
+    kernel --> verity["dm-verity verified rootfs"]
+    verity --> ima["IMA/EVM verified files"]
+    ima --> selinux["SELinux enforced policies"]
 ```
 
 **Unified Kernel Image (UKI):**
@@ -651,32 +562,18 @@ On systems that support it (x86_64 UEFI), boot artifacts are packaged into a UKI
 
 LamaDist uses RAUC (Robust Auto-Update Controller) for safe, atomic updates:
 
-```
-┌─────────────────────────────────────────────────┐
-│          Update Partition Layout                 │
-├─────────────────────────────────────────────────┤
-│                                                   │
-│  ┌─────────────┐                                │
-│  │   Boot      │  (EFI System Partition)        │
-│  │   (ESP)     │  Bootloader, kernels           │
-│  └─────────────┘                                │
-│                                                   │
-│  ┌─────────────┐  ┌─────────────┐              │
-│  │   Slot A    │  │   Slot B    │              │
-│  │   (Active)  │  │  (Inactive) │              │
-│  │             │  │             │              │
-│  │  • rootfs   │  │  • rootfs   │              │
-│  │  • dm-verity│  │  • dm-verity│              │
-│  │  (immutable)│  │  (immutable)│              │
-│  └─────────────┘  └─────────────┘              │
-│                                                   │
-│  ┌──────────────────────────────┐               │
-│  │   Data Partition (LUKS)      │               │
-│  │   Encrypted persistent data  │               │
-│  │   User data, config, state   │               │
-│  └──────────────────────────────┘               │
-│                                                   │
-└─────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph layout["Update Partition Layout"]
+        direction TB
+        esp["Boot (ESP)\nEFI System Partition\nBootloader, kernels"]
+        subgraph slots["Root Filesystem Slots"]
+            slota["Slot A (Active)\n• rootfs\n• dm-verity\n(immutable)"]
+            slotb["Slot B (Inactive)\n• rootfs\n• dm-verity\n(immutable)"]
+        end
+        data["Data Partition (LUKS)\nEncrypted persistent data\nUser data, config, state"]
+    end
+    esp --- slots --- data
 ```
 
 **Key Partition Features:**

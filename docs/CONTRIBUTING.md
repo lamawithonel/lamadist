@@ -194,16 +194,22 @@ release/<major>[.minor][-codename]
 
 ### JIT Flow Diagram
 
-```
-main ─────●─────●─────●─────●──── (breaking change) ────●─────●──▶
-          │           │     │                             │
-          │           │     └── tag: v1.0.0               └── tag: v2.0.0
-          │           │
-          │           └── feat/add-k3s ──(PR)──▶ main
-          │
-          └── release/1.x  ◀── fork from commit prior to breaking change
-                │
-                └── tag: v1.0.1 (backported fix)
+```mermaid
+gitGraph
+    commit id: "..."
+    branch "feat/add-k3s"
+    checkout "feat/add-k3s"
+    commit id: "feat commit"
+    checkout main
+    merge "feat/add-k3s"
+    commit id: "v1.0.0" tag: "v1.0.0"
+    branch "release/1.x"
+    checkout main
+    commit id: "breaking!" type: HIGHLIGHT
+    commit id: "v2.0.0" tag: "v2.0.0"
+    checkout "release/1.x"
+    commit id: "backported fix"
+    commit id: "v1.0.1" tag: "v1.0.1"
 ```
 
 ### Branch Naming Examples

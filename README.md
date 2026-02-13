@@ -75,20 +75,17 @@ LamaDist is in active development. See [`docs/PLAN.md`](docs/PLAN.md) for the co
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────┐
-│              LamaDist System                     │
-├─────────────────────────────────────────────────┤
-│  User Services | Containers (k3s) | systemd  │
-│  ─────────────────────────────────────────────  │
-│  Security: SELinux | IMA/EVM | dm-verity | LUKS │
-│  ─────────────────────────────────────────────  │
-│         Linux Kernel 6.6 LTS                     │
-│  ─────────────────────────────────────────────  │
-│    Bootloader (systemd-boot / U-Boot)           │
-│  ─────────────────────────────────────────────  │
-│    Hardware (x86_64 | ARM64)                     │
-└─────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph lamadist["LamaDist System"]
+        direction TB
+        services["User Services · Containers (k3s) · systemd"]
+        security["Security: SELinux · IMA/EVM · dm-verity · LUKS"]
+        kernel["Linux Kernel 6.6 LTS"]
+        boot["Bootloader (systemd-boot / U-Boot)"]
+        hardware["Hardware (x86_64 | ARM64)"]
+        services --> security --> kernel --> boot --> hardware
+    end
 ```
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for detailed architecture information.
