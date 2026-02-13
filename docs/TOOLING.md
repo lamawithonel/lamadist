@@ -298,8 +298,9 @@ mise tasks
 
 Inside the build container, Python dependencies are managed with **`uv`** and **`pyproject.toml`**:
 
-```
-pyproject.toml → uv pip compile → container/requirements.txt → Container
+```mermaid
+flowchart LR
+    pyproject["pyproject.toml"] --> uv["uv pip compile"] --> reqs["container/requirements.txt"] --> container["Container"]
 ```
 
 - **`pyproject.toml`**: High-level Python dependency specifications
