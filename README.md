@@ -11,7 +11,7 @@ LamaDist provides a hardened Linux distribution built with Yocto Project for hom
 - 🚀 **Container-ready**: k3s lightweight Kubernetes for orchestrated workloads
 - 🔄 **Atomic Updates**: RAUC-based OTA updates with automatic rollback
 - 🖥️ **Multi-platform**: Support for x86_64 Intel systems and ARM SBCs (Orin NX, RK1, SOQuartz)
-- 📦 **Reproducible Builds**: KAS-based declarative configuration in Docker containers
+- 📦 **Reproducible Builds**: KAS-based declarative configuration in OCI containers (Podman/Docker)
 - 🎯 **Minimal & Optimized**: Lean system with size-optimized builds (`-Os`)
 
 ## Quick Start
@@ -19,9 +19,9 @@ LamaDist provides a hardened Linux distribution built with Yocto Project for hom
 ### Prerequisites
 
 - Linux system (Ubuntu 22.04+ recommended) or WSL2
-- Docker 20.10+ with BuildKit
+- [mise](https://mise.jdx.dev/) (polyglot tool manager and task runner)
+- [podman](https://podman.io/) or Docker
 - 8+ GB RAM, 100+ GB free disk space (SSD recommended)
-- Python 3.12
 
 ### Build Your First Image
 
@@ -30,28 +30,21 @@ LamaDist provides a hardened Linux distribution built with Yocto Project for hom
 git clone https://github.com/lamawithonel/lamadist.git
 cd lamadist
 
-# Set up Python environment
-python3 -m venv .venv
-source .venv/bin/activate
+# Install tools (mise manages everything)
+mise install
 
-# Install development tools
-make dev-tools-locked
-
-# Build the container
-make container
-
-# Build image (this will take 2-6 hours on first build)
-make build BSP=x86_64
+# Build image (2-6 hours on first build)
+mise run build --bsp x86_64
 
 # Images will be in: build/tmp/deploy/images/genericx86-64/
 ```
 
 ### Supported Hardware (BSPs)
 
-- **x86_64**: Intel-based systems (`make build BSP=x86_64`)
-- **orin-nx**: NVIDIA Jetson Orin NX (`make build BSP=orin-nx`)
-- **rk1**: Radxa RK1 (`make build BSP=rk1`)
-- **soquartz**: Pine64 SOQuartz (`make build BSP=soquartz`)
+- **x86_64**: Intel-based systems (`mise run build --bsp x86_64`)
+- **orin-nx**: NVIDIA Jetson Orin NX (`mise run build --bsp orin-nx`)
+- **rk1**: Radxa RK1 (`mise run build --bsp rk1`)
+- **soquartz**: Pine64 SOQuartz (`mise run build --bsp soquartz`)
 
 ## Documentation
 
@@ -65,11 +58,11 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 ### Key Commands
 
 ```bash
-make help              # Show all available targets
-make build BSP=x86_64  # Build for x86_64
-make kash              # Interactive shell in build environment
-make dump              # Dump KAS configuration
-make version           # Show build version
+mise tasks                     # list available tasks
+mise run build --bsp x86_64    # build for x86_64
+mise run shell --bsp x86_64    # interactive build environment
+mise run dump --bsp x86_64     # dump KAS configuration
+mise run version               # show build version
 ```
 
 See [`docs/TOOLING.md`](docs/TOOLING.md) for detailed usage information.
@@ -118,7 +111,7 @@ Contributions are welcome! Please read [`docs/CONTRIBUTING.md`](docs/CONTRIBUTIN
 
 ## Legal Notice
 
-   Copyright 2024 Lucas Yamanishi
+   Copyright 2024-2026 Lucas Yamanishi
 
    All content licensed under the Apache License, Version 2.0 (the "License");
    you may not use these files except in compliance with the License.

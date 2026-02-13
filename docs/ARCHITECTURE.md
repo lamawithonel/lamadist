@@ -218,12 +218,12 @@ LamaDist uses KAS (Setup tool for bitbake based projects) for declarative, repro
 │                  Build Orchestration                    │
 ├────────────────────────────────────────────────────────┤
 │                                                          │
-│  Make Target → Docker Container → KAS → BitBake → OE   │
+│  mise run → Podman Container → KAS → BitBake → OE      │
 │                                                          │
 │  ┌──────────┐   ┌──────────────┐   ┌───────────────┐  │
-│  │ Makefile │──▶│ Build        │──▶│ KAS Config    │  │
-│  │ Targets  │   │ Container    │   │ (YAML)        │  │
-│  └──────────┘   │ (Docker)     │   └───────────────┘  │
+│  │ mise     │──▶│ Build        │──▶│ KAS Config    │  │
+│  │ Tasks    │   │ Container    │   │ (YAML)        │  │
+│  └──────────┘   │ (Podman)     │   └───────────────┘  │
 │                 └──────────────┘           │           │
 │                                             ▼           │
 │                                    ┌────────────────┐  │
@@ -299,32 +299,29 @@ kas/
 kas build main.kas.yml:bsp/x86_64.kas.yml:extras/debug.kas.yml
 ```
 
-### Makefile Targets
+### mise Tasks
 
-The root `Makefile` provides convenient targets for common operations:
+The `mise` task runner provides convenient tasks for common operations (replacing the root `Makefile`):
 
-#### Build Targets
-- `make build [BSP=<bsp>]`: Build images for specified BSP (default: x86_64)
-- `make ci-build`: Build with CI-specific settings (force checkout, update)
-- `make container`: Build the kas build container
+#### Build Tasks
+- `mise run build --bsp <bsp>`: Build images for specified BSP (default: x86_64)
+- `mise run ci-build`: Build with CI-specific settings (force checkout, update)
+- `mise run container`: Build the KAS build container
 
-#### Development Targets
-- `make kas-shell` / `make kash`: Start interactive shell in KAS environment
-- `make container-shell`: Start shell in build container (without KAS)
-- `make dump`: Dump KAS configuration
+#### Development Tasks
+- `mise run shell --bsp <bsp>`: Start interactive shell in KAS environment
+- `mise run container-shell`: Start shell in build container (without KAS)
+- `mise run dump --bsp <bsp>`: Dump KAS configuration
 
-#### Python Targets
-- `make lockfiles`: Update Python dependency lockfiles
-- `make dev-tools-locked`: Install pinned development tools
+#### Cleanup Tasks
+- `mise run clean`: Remove build artifacts
+- `mise run clean:all`: Remove entire build directory (with confirmation)
+- `mise run clean:sstate`: Clean shared state cache
+- `mise run clean:container`: Remove container image
 
-#### Cleanup Targets
-- `make clean-outputs`: Remove build artifacts
-- `make clean-build-all`: Remove entire build directory (with confirmation)
-- `make clean-sstate-cache`: Clean shared state cache
-
-#### Utility Targets
-- `make version`: Display build version (via GitVersion)
-- `make help`: Show all available targets
+#### Utility Tasks
+- `mise run version`: Display build version (via GitVersion)
+- `mise tasks`: List all available tasks
 
 ### Build Caching
 
@@ -392,30 +389,33 @@ LamaDist supports multiple hardware platforms:
 │                 Build System Components                 │
 ├────────────────────────────────────────────────────────┤
 │                                                          │
-│  Pipfile ──▶ Pipfile.lock ──▶ container/requirements.txt│
-│                 │                       │                │
-│                 │                       ▼                │
-│                 │              ┌────────────────┐       │
-│                 ▼              │ Build Container│       │
-│        requirements-dev.txt    │   (Docker)     │       │
-│                 │              └────────────────┘       │
-│                 │                       │                │
-│                 │                       ▼                │
-│           ┌─────────────┐      ┌────────────────┐      │
-│           │ Dev Tools   │      │  KAS + BitBake │      │
-│           │ (Local)     │      └────────────────┘      │
-│           └─────────────┘              │                │
-│                                        ▼                │
-│                           ┌────────────────────┐       │
-│  kas/*.yml ─────────────▶│ Yocto Build System │       │
-│  meta-lamadist/ ─────────▶│ (BitBake + Layers) │       │
-│                           └────────────────────┘       │
-│                                        │                │
-│                                        ▼                │
-│                           ┌────────────────────┐       │
-│                           │  Build Outputs     │       │
-│                           │  (Images, Packages)│       │
-│                           └────────────────────┘       │
+│  pyproject.toml ──▶ uv pip compile                      │
+│                         │                                │
+│                         ▼                                │
+│              container/requirements.txt                   │
+│                         │                                │
+│                         ▼                                │
+│                ┌────────────────┐                        │
+│                │ Build Container│                        │
+│                │   (Podman)     │                        │
+│                └────────────────┘                        │
+│                         │                                │
+│                         ▼                                │
+│  ┌──────────────┐  ┌────────────────┐                   │
+│  │ Dev Tools    │  │  KAS + BitBake │                   │
+│  │ (Host: mise  │  └────────────────┘                   │
+│  │  + podman)   │          │                             │
+│  └──────────────┘          ▼                             │
+│                  ┌────────────────────┐                  │
+│  kas/*.yml ─────▶│ Yocto Build System │                  │
+│  meta-lamadist/ ─▶│ (BitBake + Layers) │                  │
+│                  └────────────────────┘                  │
+│                           │                              │
+│                           ▼                              │
+│                  ┌────────────────────┐                  │
+│                  │  Build Outputs     │                  │
+│                  │  (Images, Packages)│                  │
+│                  └────────────────────┘                  │
 │                                                          │
 └────────────────────────────────────────────────────────┘
 ```
@@ -780,5 +780,5 @@ LamaDist uses RAUC (Robust Auto-Update Controller) for safe, atomic updates:
 
 ---
 
-**Last Updated:** 2024  
-**Document Version:** 1.0
+**Last Updated:** 2026  
+**Document Version:** 2.0

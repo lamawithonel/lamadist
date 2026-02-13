@@ -7,11 +7,12 @@ This document describes the tools required for LamaDist development, how to set 
 
 - [Overview](#overview)
 - [Required Tools](#required-tools)
-- [Development Environment Setup](#development-environment-setup)
-- [Build System Usage](#build-system-usage)
-- [Available Make Targets](#available-make-targets)
+- [Developer Environment Setup](#developer-environment-setup)
+- [mise Task Reference](#mise-task-reference)
+- [Container Python Dependencies](#container-python-dependencies)
 - [KAS Configuration](#kas-configuration)
 - [Troubleshooting](#troubleshooting)
+- [Transition Note](#transition-note)
 
 ---
 
@@ -19,11 +20,13 @@ This document describes the tools required for LamaDist development, how to set 
 
 LamaDist uses a containerized build approach to ensure reproducible builds across different development environments. The core tools are:
 
-- **Docker**: Provides isolated, reproducible build environment
-- **KAS**: Declarative Yocto/OE project setup and build tool
-- **Make**: Orchestrates build commands and workflows
-- **Python/Pipenv**: Manages Python dependencies
+- **mise**: Single CLI entrypoint — polyglot tool/runtime manager and task runner ([mise.jdx.dev](https://mise.jdx.dev/))
+- **podman** (preferred) or Docker: Provides the isolated, reproducible KAS build container
+- **KAS**: Declarative Yocto/OE project setup and build tool (runs inside the container)
+- **uv** + `pyproject.toml`: Python dependency management inside the container
 - **GitVersion**: Automatic semantic versioning
+
+Host developers only need **`mise`**, **`podman`** (or Docker), and **`git`**. No Python, venv, or Make is required on the host — mise manages any needed tools.
 
 ---
 
@@ -41,87 +44,38 @@ LamaDist uses a containerized build approach to ensure reproducible builds acros
 
 ### Core Tools
 
-#### 1. Docker
+#### 1. mise
 
-**Required Version**: 20.10+ (with BuildKit support)
+**Purpose**: Polyglot tool manager and task runner — single CLI entrypoint for all development tasks
 
-**Installation (Ubuntu/Debian)**:
+**Installation**: See the [mise Getting Started guide](https://mise.jdx.dev/getting-started.html) for the latest instructions.
+
 ```bash
-# Install prerequisites
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg
+# Install mise (one-liner)
+curl https://mise.run | sh
 
-# Add Docker's official GPG key
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-# Set up the repository
-echo \
-  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-# Install Docker Engine
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-
-# Add your user to docker group (logout/login required)
-sudo usermod -aG docker $USER
-```
-
-**Post-Installation**:
-```bash
-# Test Docker installation
-docker run hello-world
-
-# Enable Docker BuildKit (recommended)
-echo 'export DOCKER_BUILDKIT=1' >> ~/.bashrc
+# Add mise to your shell (follow the output instructions, e.g. for bash):
+echo 'eval "$(~/.local/bin/mise activate bash)"' >> ~/.bashrc
 source ~/.bashrc
-```
-
-**Docker Configuration**:
-
-For optimal build performance, configure Docker with sufficient resources:
-
-```json
-# ~/.docker/daemon.json
-{
-  "storage-driver": "overlay2",
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  }
-}
-```
-
-Restart Docker after changes:
-```bash
-sudo systemctl restart docker
-```
-
-#### 2. Python 3.12
-
-**Required Version**: 3.12+ (3.12 recommended)
-
-**Installation (Ubuntu 22.04)**:
-```bash
-# Install Python 3.12 from deadsnakes PPA
-sudo apt-get update
-sudo apt-get install -y software-properties-common
-sudo add-apt-repository -y ppa:deadsnakes/ppa
-sudo apt-get update
-sudo apt-get install -y python3.12 python3.12-venv python3.12-dev
 
 # Verify installation
-python3.12 --version
+mise --version
 ```
 
-**Set Python 3.12 as default (optional)**:
+#### 2. podman (preferred) or Docker
+
+**Purpose**: Run the KAS build container for reproducible Yocto builds
+
+**podman Installation (Ubuntu/Debian)**:
 ```bash
-sudo update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1
+sudo apt-get update
+sudo apt-get install -y podman
+
+# Verify installation
+podman --version
 ```
+
+**Docker Alternative**: Docker 20.10+ with BuildKit is also supported. See [Docker documentation](https://docs.docker.com/) for installation.
 
 #### 3. Git
 
@@ -136,30 +90,15 @@ git config --global user.name "Your Name"
 git config --global user.email "your.email@example.com"
 ```
 
-#### 4. Make
-
-**Required Version**: Any recent version
-
-**Installation**:
-```bash
-sudo apt-get install -y build-essential
-```
-
 ### Optional Tools
 
 #### GitVersion
 
 **Purpose**: Automatic semantic versioning from Git history
 
-**Installation**:
 ```bash
-# GitVersion runs in Docker, no local installation needed
-# The Makefile uses gittools/gitversion Docker image
-```
-
-**Verify**:
-```bash
-make version
+# GitVersion runs in a container, no local installation needed
+mise run version
 ```
 
 #### Development Tools
@@ -181,76 +120,25 @@ sudo apt-get install -y \
 
 ---
 
-## Development Environment Setup
+## Developer Environment Setup
 
 ### Quick Start
 
-1. **Clone the Repository**
-   ```bash
-   git clone https://github.com/lamawithonel/lamadist.git
-   cd lamadist
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/lamawithonel/lamadist.git
+cd lamadist
 
-2. **Set Up Python Virtual Environment**
-   ```bash
-   # Create virtual environment
-   python3.12 -m venv .venv
-   
-   # Activate virtual environment
-   source .venv/bin/activate
-   
-   # Verify Python version
-   python --version  # Should show 3.12.x
-   ```
+# Install tools (mise manages everything)
+mise install
 
-3. **Install Development Dependencies**
-   ```bash
-   # Install Pipenv and other dev tools
-   make dev-tools-locked
-   ```
+# Build image (2-6 hours on first build)
+mise run build --bsp x86_64
 
-4. **Build the Container**
-   ```bash
-   # Build the kas build container
-   make container
-   ```
-
-5. **Verify Setup**
-   ```bash
-   # Check that everything is working
-   make dump BSP=x86_64
-   ```
+# Images will be in: build/tmp/deploy/images/genericx86-64/
+```
 
 ### Detailed Setup
-
-#### Python Dependency Management
-
-LamaDist uses Pipenv for Python dependency management with the following workflow:
-
-```
-Pipfile → Pipfile.lock → requirements files → Container
-```
-
-**Pipfile**: High-level dependency specifications
-- Development and runtime dependencies
-- Version constraints
-
-**Pipfile.lock**: Locked dependency versions
-- Generated from Pipfile
-- Ensures reproducible installs
-
-**requirements files**:
-- `requirements-dev.txt`: Local development tools
-- `container/requirements.txt`: Container Python packages
-
-**Update Dependencies**:
-```bash
-# Update all lockfiles
-make lockfiles
-
-# Rebuild container with new dependencies
-make container
-```
 
 #### Environment Variables
 
@@ -258,7 +146,7 @@ LamaDist uses environment variables for build configuration:
 
 **.kas.env**: Environment variables passed to KAS container
 - See `.kas.env` file for available variables
-- Contains Docker/CI environment passthrough
+- Contains container/CI environment passthrough
 
 **.kas.env.local**: Local overrides (not committed to git)
 ```bash
@@ -291,54 +179,6 @@ export HOST_SSTATE_DIR=/path/to/sstate
 DL_DIR=/path/to/downloads
 ```
 
----
-
-## Build System Usage
-
-### Basic Build Commands
-
-#### Build for Default BSP (x86_64)
-```bash
-make build
-```
-
-#### Build for Specific BSP
-```bash
-# Available BSPs: x86_64, orin-nx, rk1, soquartz
-make build BSP=orin-nx
-```
-
-#### CI Build (with force checkout and update)
-```bash
-make ci-build
-```
-
-### Build Workflow
-
-1. **First Build** (clean workspace):
-   ```bash
-   # Build container
-   make container
-   
-   # Initial build (will take 2-6 hours depending on hardware)
-   make build BSP=x86_64
-   ```
-
-2. **Incremental Builds** (with sstate cache):
-   ```bash
-   # Subsequent builds are much faster
-   make build BSP=x86_64
-   ```
-
-3. **Clean Build** (remove build artifacts):
-   ```bash
-   # Remove output artifacts only
-   make clean-outputs
-   
-   # Full clean (with confirmation)
-   make clean-build-all
-   ```
-
 ### Build Output Locations
 
 After a successful build:
@@ -366,43 +206,43 @@ build/
 
 ---
 
-## Available Make Targets
+## mise Task Reference
 
-### Build Targets
+mise is the single CLI entrypoint for all LamaDist development tasks. Tasks use [`usage`](https://usage.jdx.dev/) specs for shell autocompletion of flags and arguments.
 
-| Target | Description |
-|--------|-------------|
-| `make build [BSP=<bsp>]` | Build images for specified BSP (default: x86_64) |
-| `make ci-build` | Build with CI settings (force checkout, update) |
-| `make container` | Build the kas build container image |
+### Build Tasks
+
+| Task | Description |
+|------|-------------|
+| `mise run build --bsp <bsp>` | Build images for specified BSP (default: x86_64) |
+| `mise run ci-build` | Build with CI settings (force checkout, update) |
+| `mise run container` | Build the KAS build container image |
+
+**Available BSPs**: `x86_64`, `orin-nx`, `rk1`, `soquartz`
 
 **Examples**:
 ```bash
-make build                    # Build x86_64
-make build BSP=rk1           # Build for RK1
-make ci-build                # CI-style build
-make container               # Rebuild container
+mise run build --bsp x86_64    # Build x86_64
+mise run build --bsp rk1       # Build for RK1
+mise run ci-build              # CI-style build
+mise run container             # Rebuild container
 ```
 
-### Development Targets
+### Development Tasks
 
-| Target | Description |
-|--------|-------------|
-| `make kas-shell` or `make kash` | Interactive shell in KAS environment |
-| `make container-shell` | Shell in container (without KAS) |
-| `make dump` | Dump KAS configuration |
-| `make kas-shell-command` | Run command in KAS shell (use KAS_SHELL_COMMAND=) |
+| Task | Description |
+|------|-------------|
+| `mise run shell --bsp <bsp>` | Interactive KAS shell for specified BSP |
+| `mise run container-shell` | Shell in container (without KAS) |
+| `mise run dump --bsp <bsp>` | Dump KAS configuration for specified BSP |
 
 **Examples**:
 ```bash
 # Start interactive KAS shell
-make kash BSP=x86_64
+mise run shell --bsp x86_64
 
 # Dump configuration to review
-make dump BSP=x86_64
-
-# Run specific bitbake command
-make kas-shell-command KAS_SHELL_COMMAND="bitbake -e core-image-minimal"
+mise run dump --bsp x86_64
 ```
 
 **In KAS shell**:
@@ -415,64 +255,56 @@ bitbake-layers show-layers          # List layers
 bitbake-layers show-recipes         # List recipes
 ```
 
-### Python Targets
+### Cleanup Tasks
 
-| Target | Description |
-|--------|-------------|
-| `make lockfiles` | Update Python lockfiles (Pipfile.lock, requirements.txt) |
-| `make dev-tools-locked` | Install development tools at pinned versions |
-
-**Examples**:
-```bash
-# Update dependencies
-vim Pipfile                  # Edit dependencies
-make lockfiles              # Generate new lockfiles
-make container              # Rebuild container with new deps
-
-# Install dev tools locally
-make dev-tools-locked
-```
-
-### Cleanup Targets
-
-| Target | Description |
-|--------|-------------|
-| `make clean-outputs` | Remove build output artifacts |
-| `make clean-build-tmp` | Remove build/tmp directory |
-| `make clean-build-all` | Remove entire build directory (with confirmation) |
-| `make clean-sstate-cache` | Clean shared state cache (with confirmation) |
-| `make clean-container` | Remove container image |
-| `make clean-venv` | Remove Python virtual environment |
-| `make clean-lockfiles` | Remove Python lockfiles |
+| Task | Description |
+|------|-------------|
+| `mise run clean` | Remove build output artifacts |
+| `mise run clean:all` | Remove entire build directory (with confirmation) |
+| `mise run clean:sstate` | Clean shared state cache (with confirmation) |
+| `mise run clean:container` | Remove container image |
 
 **Examples**:
 ```bash
 # Clean outputs only (keep sstate)
-make clean-outputs
+mise run clean
 
 # Full clean (will prompt for confirmation)
-make clean-build-all
+mise run clean:all
 
-# Clean everything including sstate
-make clean-sstate-cache
-make clean-build-all
+# Clean sstate cache
+mise run clean:sstate
 ```
 
-### Utility Targets
+### Utility Tasks
 
-| Target | Description |
-|--------|-------------|
-| `make version` | Display build version (via GitVersion) |
-| `make help` | Show all available targets with descriptions |
+| Task | Description |
+|------|-------------|
+| `mise run version` | Show build version (via GitVersion) |
+| `mise tasks` | List all available tasks (built into mise) |
 
 **Examples**:
 ```bash
 # Get version
-make version
+mise run version
 
-# Show help
-make help
+# List all tasks
+mise tasks
 ```
+
+---
+
+## Container Python Dependencies
+
+Inside the build container, Python dependencies are managed with **`uv`** and **`pyproject.toml`**:
+
+```
+pyproject.toml → uv pip compile → container/requirements.txt → Container
+```
+
+- **`pyproject.toml`**: High-level Python dependency specifications
+- **`container/requirements.txt`**: Locked, compiled dependencies generated by `uv pip compile pyproject.toml`
+- The **host does NOT need Python** — all Python tooling runs inside the container
 
 ---
 
@@ -514,8 +346,8 @@ kas build main.kas.yml:bsp/x86_64.kas.yml
 # Base + BSP + Debug
 kas build main.kas.yml:bsp/x86_64.kas.yml:extras/debug.kas.yml
 
-# Via Make (automatically includes debug)
-make build BSP=x86_64
+# Via mise (automatically includes debug)
+mise run build --bsp x86_64
 ```
 
 ### Key KAS Configuration Elements
@@ -560,7 +392,9 @@ To add local customizations without modifying tracked files:
 
 2. **Use in builds**:
    ```bash
-   make kas-shell KAS_CONFIG="$(KAS_CONFIG):kas/local.kas.yml"
+   # (The exact syntax will depend on mise task implementation)
+   mise run shell --bsp x86_64
+   kas build main.kas.yml:bsp/x86_64.kas.yml:kas/local.kas.yml
    ```
 
 ---
@@ -569,7 +403,27 @@ To add local customizations without modifying tracked files:
 
 ### Common Issues and Solutions
 
-#### Issue: Docker permission denied
+#### Issue: podman permission denied
+
+**Symptom**:
+```
+ERRO[0000] cannot find UID/GID for user ...
+```
+
+**Solution**:
+```bash
+# Ensure your user has a subuid/subgid mapping
+grep $USER /etc/subuid || sudo usermod --add-subuids 100000-165535 $USER
+grep $USER /etc/subgid || sudo usermod --add-subgids 100000-165535 $USER
+
+# Reset podman storage if needed
+podman system reset
+
+# Verify
+podman run --rm hello-world
+```
+
+#### Issue: Docker permission denied (if using Docker)
 
 **Symptom**:
 ```
@@ -588,6 +442,26 @@ newgrp docker
 docker ps
 ```
 
+#### Issue: mise install failures
+
+**Symptom**:
+```
+mise ERROR tool not found or failed to install
+```
+
+**Solution**:
+```bash
+# Run mise doctor for diagnostics
+mise doctor
+
+# Clear mise cache and retry
+mise cache clear
+mise install
+
+# Check mise version is up to date
+mise self-update
+```
+
 #### Issue: Out of disk space
 
 **Symptom**:
@@ -601,16 +475,13 @@ ERROR: No space left on device
 df -h
 
 # Clean old build artifacts
-make clean-outputs
-
-# Clean downloads (will re-download on next build)
-make clean-downloads
+mise run clean
 
 # Clean sstate cache (will rebuild on next build)
-make clean-sstate-cache
+mise run clean:sstate
 
-# Prune Docker images
-docker system prune -a
+# Prune container images
+podman system prune -a   # or: docker system prune -a
 ```
 
 #### Issue: Build fails with hash mismatch
@@ -627,23 +498,7 @@ rm -rf build/downloads/<failing-package>*
 rm -rf .cache/sstate/*<failing-package>*
 
 # Retry build
-make build
-```
-
-#### Issue: Python virtual environment issues
-
-**Symptom**:
-```
-ImportError: No module named 'pipenv'
-```
-
-**Solution**:
-```bash
-# Remove and recreate virtual environment
-make clean-venv
-python3.12 -m venv .venv
-source .venv/bin/activate
-make dev-tools-locked
+mise run build --bsp x86_64
 ```
 
 #### Issue: Container build fails
@@ -655,14 +510,11 @@ ERROR: failed to solve: failed to fetch...
 
 **Solution**:
 ```bash
-# Check Docker BuildKit is enabled
-export DOCKER_BUILDKIT=1
-
-# Clear Docker build cache
-docker builder prune -a
+# Clear container build cache
+podman system prune -a   # or: docker builder prune -a
 
 # Rebuild container
-make container
+mise run container
 ```
 
 #### Issue: KAS cannot find layer
@@ -675,10 +527,10 @@ ERROR: Layer 'meta-xxx' is not in the collection
 **Solution**:
 ```bash
 # Update kas configuration to fetch all layers
-make ci-build
+mise run ci-build
 
 # Or manually in kas shell
-make kash
+mise run shell --bsp x86_64
 bitbake-layers show-layers  # Verify all layers present
 ```
 
@@ -703,22 +555,11 @@ bitbake-layers show-layers  # Verify all layers present
 
 #### Reduce Disk Usage
 
-1. **Clean old builds regularly**: `make clean-outputs`
+1. **Clean old builds regularly**: `mise run clean`
 2. **Limit sstate cache size**: Use `sstate-cache-management` script
-3. **Remove build history**: `make clean-build-history`
-4. **Share downloads**: Use `DL_DIR` on separate partition
+3. **Share downloads**: Use `DL_DIR` on separate partition
 
 ### Getting More Information
-
-#### Enable verbose output
-
-```bash
-# Verbose make output
-make build BSP=x86_64 VERBOSE=1
-
-# KAS debug output (already enabled in Makefile)
-# See KAS_BUILD_OPTS := --log-level debug
-```
 
 #### Check BitBake logs
 
@@ -734,7 +575,7 @@ less build/tmp/work/<arch>/<recipe>/<version>/temp/log.do_<task>.<pid>
 
 ```bash
 # Enter KAS shell
-make kash BSP=x86_64
+mise run shell --bsp x86_64
 
 # Run BitBake with debugging
 bitbake -D core-image-minimal
@@ -745,23 +586,31 @@ bitbake -g core-image-minimal
 
 ---
 
+## Transition Note
+
+> **Note:** The existing `Makefile` remains functional during the transition period. The `mise` tasks described in this document are the target state and will be implemented via `.mise.toml` in a follow-up PR. During the transition, you may use either `make` or `mise run` commands.
+
+---
+
 ## Additional Resources
 
 ### Documentation
 - [Yocto Project Documentation](https://docs.yoctoproject.org/)
 - [KAS Documentation](https://kas.readthedocs.io/)
 - [BitBake User Manual](https://docs.yoctoproject.org/bitbake/)
+- [mise Documentation](https://mise.jdx.dev/)
 
 ### Community
 - [Yocto Project Mailing Lists](https://lists.yoctoproject.org/)
 - [Yocto Project Discord](https://discord.gg/yocto)
 
 ### Tools
-- [Docker Documentation](https://docs.docker.com/)
-- [Pipenv Documentation](https://pipenv.pypa.io/)
+- [mise](https://mise.jdx.dev/)
+- [podman Documentation](https://docs.podman.io/)
+- [uv Documentation](https://docs.astral.sh/uv/)
 - [GitVersion Documentation](https://gitversion.net/)
 
 ---
 
-**Last Updated:** 2024  
-**Document Version:** 1.0
+**Last Updated:** 2026  
+**Document Version:** 2.0
