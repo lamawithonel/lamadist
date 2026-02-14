@@ -578,7 +578,5 @@ Contributors will be recognized in:
 
 Thank you for contributing to LamaDist!
 
----
+> **Note:** For the last modification date of any document, consult the Git commit history: `git log --format='%ai' -1 -- <filepath>`
 
-**Last Updated:** 2026  
-**Document Version:** 2.0

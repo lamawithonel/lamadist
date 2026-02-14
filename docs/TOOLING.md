@@ -589,7 +589,7 @@ bitbake -g core-image-minimal
 
 ## Transition Note
 
-> **Note:** The existing `Makefile` remains functional during the transition period. The `mise` tasks described in this document are the target state and will be implemented via `.mise.toml` in a follow-up PR. During the transition, you may use either `make` or `mise run` commands.
+> **Note:** The existing `Makefile` remains functional during the transition period. The `mise` tasks described in this document are the target state and will be implemented via `.mise.toml` in a follow-up PR. During the transition, you may use either `make` or `mise run` commands. The `Makefile` and `Pipfile` will be removed once all mise tasks are validated and Phase 0.3 exit criteria are met.
 
 ---
 
@@ -611,7 +611,3 @@ bitbake -g core-image-minimal
 - [uv Documentation](https://docs.astral.sh/uv/)
 - [GitVersion Documentation](https://gitversion.net/)
 
----
-
-**Last Updated:** 2026  
-**Document Version:** 2.0

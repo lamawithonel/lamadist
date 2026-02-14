@@ -11,6 +11,7 @@ This document describes the architecture of the LamaDist distribution, including
 - [Build System Architecture](#build-system-architecture)
 - [Target Hardware](#target-hardware)
 - [Component Relationships](#component-relationships)
+- [Interface Definitions](#interface-definitions)
 - [Security Architecture](#security-architecture)
 - [Update and Maintenance](#update-and-maintenance)
 
@@ -57,6 +58,7 @@ flowchart TD
 - **System Tools**: systemd ecosystem preferred (systemd-timesyncd, systemd-networkd, systemd-resolved, etc.)
 - **Package Format**: RPM with mandatory GPG signatures and TPM-backed signing support
 - **File System**: ext4 with dm-verity for integrity
+- **Partition Table**: GPT with [Discoverable Partitions Specification (DPS)](https://uapi-group.org/specifications/specs/discoverable_partitions_specification/) type UUIDs on all partitions. On systems that support it, `systemd-gpt-auto-generator` auto-discovers and mounts partitions based on their DPS type UUIDs. DPS type UUIDs are set on all platforms regardless of whether auto-discovery is used for mounting.
 - **Root Filesystem**: Immutable, read-only with verified boot
 - **User Space**: Merged `/usr` (UsrMerge)
 - **Compression**: zstd level 11 for all compressed artifacts
@@ -409,6 +411,79 @@ linux /vmlinuz root=/dev/mapper/root-A ro \
 
 ---
 
+## Interface Definitions
+
+This section defines the system boundaries and the interfaces between them.
+
+### System Layers
+
+```mermaid
+flowchart TD
+    subgraph build["Build Infrastructure"]
+        direction TB
+        host["Build Host\n(Developer Workstation / CI Runner)"]
+        container["Build Container\n(OCI via Podman / Docker)"]
+        kas["KAS"]
+        bitbake["BitBake"]
+        yocto["Yocto Build System"]
+        host -->|invokes| container -->|invokes| kas -->|drives| bitbake -->|builds within| yocto
+    end
+    subgraph target["Target System"]
+        direction TB
+        tenant["Tenant Layer\nOCI Containers · Kubernetes Pods"]
+        platform["Platform Layer\nk3s · System Services"]
+        distro["Distro Layer (hardware-independent policy)\nsystemd · SELinux · RAUC Client · dm-verity · IMA/EVM"]
+        osbase["OS Base Layer (hardware-specific)\nKernel · Bootloader · Machine Config"]
+        tenant -->|runs on| platform
+        platform -->|uses services from| distro
+        distro -->|runs on| osbase
+    end
+    update_server["Update Server\n(external, protocol TBD)"]
+    build -->|produces images for| target
+    update_server <-->|RAUC adaptive updates| distro
+```
+
+### Interface Descriptions
+
+#### 1. Build Host ↔ Build Container
+
+The build host communicates with the build container through:
+
+- **Bind mounts**: Project source, sstate cache, and downloads directories are mounted into the container.
+- **Environment variables**: Configuration is passed via `.kas.env` and `.kas.env.local`.
+- **Network access**: The container requires network access for source downloads.
+- **Container runtime API**: Podman is preferred; Docker is compatible. The build container is portable across any OCI-compliant runtime.
+
+#### 2. Build Container ↔ KAS/BitBake
+
+- **KAS YAML configuration files**: KAS reads the `kas/*.kas.yml` hierarchy to configure the build.
+- **BitBake variables**: KAS translates YAML configuration into BitBake variables and `local.conf` settings.
+- **Layer configuration**: KAS manages layer checkout, ordering, and dependency resolution. KAS drives BitBake inside the container.
+
+#### 3. Yocto Distro ↔ OS Base
+
+The Yocto distro defines hardware-independent policy: package format, init system, security posture, and feature flags. The OS base adds hardware-specific components: bootloader, kernel, and machine configuration. This boundary is defined by KAS configuration layering (`main.kas.yml` + `bsp/*.kas.yml`).
+
+#### 4. OS Base ↔ Platform Components
+
+The OS base provides systemd service management, SELinux policy enforcement, the network stack (systemd-networkd), storage, and device access. Platform components (e.g., k3s) consume these OS interfaces.
+
+#### 5. Platform Components ↔ Tenant Components
+
+Tenant applications interact through their respective runtime APIs — Kubernetes API (pods, services, volumes, configmaps) for k3s workloads, or other runtime IPCs. Tenants access host resources only through runtime-mediated interfaces and are more isolated than platform components.
+
+#### 6. RAUC Client ↔ Update Server
+
+The RAUC client is part of the LamaDist distro layer (in the Yocto sense — the hardware-independent distribution configuration defined in `conf/distro/lamadist.conf`). It manages on-target update installation, A/B slot switching, health checks, and rollback. The update server is a separate, external system that delivers update bundles to the RAUC client.
+
+- **Interface status**: Currently undefined with respect to update server implementation, network protocol, and API details.
+- **Adaptive updates**: The interface will be based on RAUC's "adaptive updates" feature, which enables delta-like efficient updates by skipping redundant data already present on the target.
+- **Streamed updates**: May optionally use RAUC's ability to accept streamed updates, allowing installation to begin before the full bundle is downloaded.
+- **Bundle format**: Signed RAUC bundles containing root filesystem images (the bundle format is defined by RAUC, not by this interface).
+- **On-target responsibilities** (RAUC client): A/B slot management, bootloader integration (systemd-boot / U-Boot), post-boot health checks, and automatic rollback on failure.
+
+---
+
 ## Security Architecture
 
 LamaDist implements defense-in-depth with multiple security layers:
@@ -566,23 +641,24 @@ LamaDist uses RAUC (Robust Auto-Update Controller) for safe, atomic updates:
 flowchart TD
     subgraph layout["Update Partition Layout"]
         direction TB
-        esp["Boot (ESP)\nEFI System Partition\nBootloader, kernels"]
+        esp["Boot (ESP)\nEFI System Partition\nDPS type: C12A7328-…\nBootloader, kernels"]
         subgraph slots["Root Filesystem Slots"]
-            slota["Slot A (Active)\n• rootfs\n• dm-verity\n(immutable)"]
-            slotb["Slot B (Inactive)\n• rootfs\n• dm-verity\n(immutable)"]
+            slota["Slot A (Active)\n• rootfs (ext4 + dm-verity)\n• DPS root type UUID\n(immutable)"]
+            slotb["Slot B (Inactive)\n• rootfs (ext4 + dm-verity)\n• DPS root type UUID\n(immutable)"]
         end
-        data["Data Partition (LUKS)\nEncrypted persistent data\nUser data, config, state"]
+        data["Data Partition (LUKS)\nDPS type: linux generic\nEncrypted persistent data\nUser data, config, state"]
     end
     esp --- slots --- data
 ```
 
 **Key Partition Features:**
 
-- **Boot (ESP)**: UEFI system partition with bootloader and kernel images
-- **Slot A/B**: Immutable, read-only root filesystems with dm-verity integrity checking
-- **Data Partition**: LUKS-encrypted volume for all persistent, mutable data
+- **Boot (ESP)**: UEFI system partition with bootloader and kernel images; DPS type UUID `C12A7328-F81F-11D2-BA4B-00A0C93EC93B`
+- **Slot A/B**: Immutable, read-only root filesystems with dm-verity integrity checking; DPS architecture-specific root partition type UUID (e.g., `4F68BCE3-…` for x86-64, `B921B045-…` for AArch64)
+- **Data Partition**: LUKS-encrypted volume for all persistent, mutable data; DPS type UUID assigned per partition purpose
 - **Immutability**: Root filesystems cannot be modified at runtime
 - **Encryption**: All persistent user data is encrypted with LUKS
+- **Discoverable Partitions**: All partitions carry [DPS type UUIDs](https://uapi-group.org/specifications/specs/discoverable_partitions_specification/) regardless of platform. On systems that support it (GPT + systemd), `systemd-gpt-auto-generator` auto-discovers and mounts partitions without `/etc/fstab` entries. On platforms where auto-discovery is not used for mounting, DPS type UUIDs are still set for specification compliance and tooling interoperability.
 
 ### Update Process
 
@@ -674,8 +750,5 @@ flowchart TD
 - [systemd Documentation](https://www.freedesktop.org/wiki/Software/systemd/)
 - [Unified Kernel Image (UKI)](https://uapi-group.org/specifications/specs/unified_kernel_image/)
 - [systemd-boot](https://www.freedesktop.org/software/systemd/man/systemd-boot.html)
+- [Discoverable Partitions Specification (DPS)](https://uapi-group.org/specifications/specs/discoverable_partitions_specification/)
 
----
-
-**Last Updated:** 2026  
-**Document Version:** 2.0
