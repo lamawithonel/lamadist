@@ -13,6 +13,25 @@ The development is organized into phases, with each phase building upon the prev
 
 ---
 
+## Concept of Operations
+
+- **Operator**: A single administrator managing a large number of nodes / devices.
+- **Operational scenarios**: Unattended home server, NAS, edge compute node, or k3s
+  cluster member. Devices run 24/7 with infrequent physical access; remote management
+  is the norm.
+- **Quality attribute priorities** (in order):
+  1. Security
+  2. Reliability
+  3. Maintainability
+  4. Performance
+- **Deployment model**: Images are built on a development workstation (or CI runner),
+  then flashed to target hardware (USB installer, network install) or deployed via OTA
+  using RAUC. The target runs immutably; host-specific configuration is injected via
+  kernel command line parameters and RAUC bundles. No configuration management tooling
+  (Ansible, Puppet, etc.) is required on the target.
+
+---
+
 ## Phase 0: Architecture Documentation + Tooling Baseline
 
 **Status:** In Progress  
@@ -55,6 +74,7 @@ The development is organized into phases, with each phase building upon the prev
 - [ ] Implement mise task definitions (`.mise.toml`)
 - [ ] Migrate container Python dependencies to `uv` + `pyproject.toml`
 - [ ] Validate QEMU launch from build container with SPICE/VNC viewer passthrough
+- [ ] Deprecate and remove `Makefile` and `Pipfile` once mise tasks are validated
 
 **Acceptance Criteria:**
 - New developers can set up environment from documentation using only `mise` and `podman`
@@ -63,6 +83,14 @@ The development is organized into phases, with each phase building upon the prev
 - QEMU images can be tested from the build container with graphical output via SPICE or VNC
 
 > **Note:** Documentation describes the target tooling state. The existing `Makefile` remains functional during the transition. Implementation of `.mise.toml` and `pyproject.toml` migration are tracked as separate tasks above.
+
+### Phase 0 Exit Criteria
+- [ ] All 0.x acceptance criteria met
+- [ ] All documentation reviewed and internally consistent across `docs/`
+- [ ] `.mise.toml` implemented and functional; Makefile fully deprecated
+- [ ] A new contributor can clone the repo, run `mise install`, and successfully execute `mise run build --bsp x86_64`
+- [ ] PR and issue templates exist in `.github/`
+- [ ] JIT Flow branching strategy documented with diagram and examples
 
 ---
 
@@ -125,6 +153,13 @@ The development is organized into phases, with each phase building upon the prev
 - BSP configs are minimal and focused
 - Extras can be easily combined with base configs
 
+### Phase 1 Exit Criteria
+- [ ] All 1.x acceptance criteria met
+- [ ] `meta-lamadist` layer passes `yocto-check-layer` validation
+- [ ] `kas build` succeeds for at least one BSP (x86_64) producing a bootable image
+- [ ] All KAS configurations are documented and composable
+- [ ] Layer structure and dependencies fully documented in layer README
+
 ---
 
 ## Phase 2: Package & Recipe Development
@@ -186,6 +221,13 @@ The development is organized into phases, with each phase building upon the prev
 - Test results are documented
 - QEMU graphical output accessible from host via SPICE or VNC when testing from within the build container
 
+### Phase 2 Exit Criteria
+- [ ] All 2.x acceptance criteria met
+- [ ] At least one image recipe builds and produces a bootable image for each supported BSP
+- [ ] Package groups are defined and functional
+- [ ] QEMU boot test passes for x86_64 image
+- [ ] All custom recipes have license information and follow Yocto style guidelines
+
 ---
 
 ## Phase 3: Build Infrastructure & CI/CD
@@ -226,6 +268,7 @@ The development is organized into phases, with each phase building upon the prev
 - [ ] Create artifact retention policies
 - [ ] Generate SPDX 3.0.1 SBOM for all builds
 - [ ] Configure zstd compression (level 11) for build artifacts
+- [ ] Establish configuration baseline identification (link image version → GitVersion semver + KAS config pins + layer revisions + SPDX SBOM)
 
 **Acceptance Criteria:**
 - Build artifacts are stored reliably
@@ -262,12 +305,22 @@ The development is organized into phases, with each phase building upon the prev
 - Signature verification is enforced on target systems
 - Key management procedures are documented
 
+### Phase 3 Exit Criteria
+- [ ] All 3.x acceptance criteria met
+- [ ] GitHub Actions CI builds and tests run on every PR to `main`
+- [ ] SPDX 3.0.1 SBOM generated for all image builds
+- [ ] Build artifacts are published with zstd level 11 compression
+- [ ] Package signing infrastructure is operational
+- [ ] Build reproducibility verified (two identical builds from same inputs)
+
 ---
 
 ## Phase 4: Device Integration & Testing
 
 **Status:** Not Started  
 **Goal:** Integrate with target hardware, establish deployment workflows, and implement OTA updates.
+
+> **Verification focus**: Phase 4 is primarily concerned with *verification* — confirming the system was built correctly and meets its technical specifications. Verification activities include boot tests, hardware feature checks, update cycle tests, and security posture validation.
 
 ### Steps
 
@@ -314,11 +367,16 @@ The development is organized into phases, with each phase building upon the prev
 - [ ] Implement WIC-based disk image generation
 - [ ] Configure dm-verity for immutable rootfs integrity
 - [ ] Set up LUKS encryption for persistent data partition in A/B layout
+- [ ] Assign Discoverable Partitions Specification (DPS) type UUIDs to all GPT partitions
+- [ ] Enable `systemd-gpt-auto-generator` partition auto-discovery on supported platforms
 - [ ] Test partition resizing and management
 - [ ] Verify rootfs immutability and write protection
 
 **Acceptance Criteria:**
 - Disk images are properly partitioned with A/B layout
+- All GPT partitions carry correct DPS type UUIDs (architecture-specific root, ESP, data, etc.)
+- On platforms supporting DPS auto-discovery, partitions are mounted via `systemd-gpt-auto-generator` without `/etc/fstab` entries
+- DPS type UUIDs are set on all platforms regardless of whether auto-discovery is used for mounting
 - Integrity verification works with dm-verity
 - LUKS encryption is functional for persistent data
 - Storage is optimally configured
@@ -349,6 +407,13 @@ The development is organized into phases, with each phase building upon the prev
 - First-boot setup is smooth
 - Backup/restore is reliable
 
+### Phase 4 Exit Criteria
+- [ ] All 4.x acceptance criteria met
+- [ ] Images boot and pass smoke tests on all supported physical hardware
+- [ ] OTA update (RAUC) cycle verified end-to-end (install → reboot → health check → commit)
+- [ ] Rollback mechanism verified (failed update → automatic rollback to previous slot)
+- [ ] Deployment documentation complete for at least USB installer and network install methods
+
 ---
 
 ## Phase 5: Release Management & Maintenance
@@ -363,12 +428,14 @@ The development is organized into phases, with each phase building upon the prev
 - [ ] Set up GitVersion or equivalent
 - [ ] Configure version tagging workflow
 - [ ] Document version numbering scheme
+- [ ] Define how GitVersion semver is propagated into Yocto `DISTRO_VERSION` and image filenames
 
 **Acceptance Criteria:**
 - Version numbers are consistent
 - Versions are automatically generated
 - Versioning scheme is documented
 - Tags are properly created
+- Built image filenames and metadata contain the GitVersion-derived version string
 
 #### 5.2 Release Process
 - [ ] Define release criteria and checklist
@@ -419,6 +486,13 @@ The development is organized into phases, with each phase building upon the prev
 - Community can contribute
 - Support expectations are clear
 
+### Phase 5 Exit Criteria
+- [ ] All 5.x acceptance criteria met
+- [ ] At least one tagged release published on `main` following JIT Flow
+- [ ] GitVersion-based versioning operational and producing correct semver tags
+- [ ] Security update process documented and tested with at least one simulated CVE patch
+- [ ] Release notes generated automatically from Conventional Commits
+
 ---
 
 ## Future Phases (TBD)
@@ -467,7 +541,3 @@ Additional phases may be defined as the project matures:
 - Phases may be adjusted based on priorities, resources, and community feedback
 - Security and quality should never be compromised for speed
 
----
-
-**Last Updated:** 2026  
-**Document Owner:** LamaDist Project Maintainer
