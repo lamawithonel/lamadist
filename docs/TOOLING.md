@@ -12,7 +12,6 @@ This document describes the tools required for LamaDist development, how to set 
 - [Container Python Dependencies](#container-python-dependencies)
 - [KAS Configuration](#kas-configuration)
 - [Troubleshooting](#troubleshooting)
-- [Transition Note](#transition-note)
 
 ---
 
@@ -584,12 +583,6 @@ bitbake -D core-image-minimal
 # Show dependencies
 bitbake -g core-image-minimal
 ```
-
----
-
-## Transition Note
-
-> **Note:** The existing `Makefile` remains functional during the transition period. The `mise` tasks described in this document are the target state and will be implemented via `.mise.toml` in a follow-up PR. During the transition, you may use either `make` or `mise run` commands. The `Makefile` and `Pipfile` will be removed once all mise tasks are validated and Phase 0.3 exit criteria are met.
 
 ---
 

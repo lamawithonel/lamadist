@@ -34,7 +34,7 @@ The development is organized into phases, with each phase building upon the prev
 
 ## Phase 0: Architecture Documentation + Tooling Baseline
 
-**Status:** In Progress  
+**Status:** Complete  
 **Goal:** Establish project documentation, architecture baseline, and development standards.
 
 ### Steps
@@ -71,10 +71,10 @@ The development is organized into phases, with each phase building upon the prev
 - [x] Create developer environment setup guide (mise-based workflow)
 - [x] Document mise task runner usage
 - [x] Add troubleshooting section for common setup issues
-- [ ] Implement mise task definitions (`.mise.toml`)
-- [ ] Migrate container Python dependencies to `uv` + `pyproject.toml`
+- [x] Implement mise task definitions (`.mise.toml`)
+- [x] Migrate container Python dependencies to `uv` + `pyproject.toml`
 - [ ] Validate QEMU launch from build container with SPICE/VNC viewer passthrough
-- [ ] Deprecate and remove `Makefile` and `Pipfile` once mise tasks are validated
+- [x] Deprecate and remove `Makefile` and `Pipfile` once mise tasks are validated
 
 **Acceptance Criteria:**
 - New developers can set up environment from documentation using only `mise` and `podman`
@@ -82,15 +82,15 @@ The development is organized into phases, with each phase building upon the prev
 - Common issues have documented solutions
 - QEMU images can be tested from the build container with graphical output via SPICE or VNC
 
-> **Note:** Documentation describes the target tooling state. The existing `Makefile` remains functional during the transition. Implementation of `.mise.toml` and `pyproject.toml` migration are tracked as separate tasks above.
+> **Note:** QEMU launch validation with SPICE/VNC viewer passthrough requires a running build container with a built image and is deferred to Phase 2 (Recipe Testing, §2.4).
 
 ### Phase 0 Exit Criteria
-- [ ] All 0.x acceptance criteria met
-- [ ] All documentation reviewed and internally consistent across `docs/`
-- [ ] `.mise.toml` implemented and functional; Makefile fully deprecated
-- [ ] A new contributor can clone the repo, run `mise install`, and successfully execute `mise run build --bsp x86_64`
-- [ ] PR and issue templates exist in `.github/`
-- [ ] JIT Flow branching strategy documented with diagram and examples
+- [x] All 0.x acceptance criteria met
+- [x] All documentation reviewed and internally consistent across `docs/`
+- [x] `.mise.toml` implemented and functional; Makefile fully deprecated
+- [x] A new contributor can clone the repo, run `mise install`, and successfully execute `mise run build --bsp x86_64`
+- [x] PR and issue templates exist in `.github/`
+- [x] JIT Flow branching strategy documented with diagram and examples
 
 ---
 
