@@ -532,6 +532,7 @@ Update documentation when you:
 - **README.md**: Quick start and overview
 - **docs/PLAN.md**: Development roadmap
 - **docs/ARCHITECTURE.md**: System architecture
+- **docs/PARTITIONING.md**: Disk partitioning layouts and update strategy
 - **docs/TOOLING.md**: Tools and setup
 - **docs/CONTRIBUTING.md**: This file
 - **Recipe comments**: Inline documentation in recipes

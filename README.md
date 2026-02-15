@@ -52,6 +52,7 @@ Comprehensive documentation is available in the [`docs/`](docs/) directory:
 
 - **[Development Plan](docs/PLAN.md)** - Phased roadmap and project planning
 - **[Architecture](docs/ARCHITECTURE.md)** - System architecture and design
+- **[Partitioning](docs/PARTITIONING.md)** - Disk partitioning layouts and update strategy
 - **[Contributing](docs/CONTRIBUTING.md)** - Contribution guidelines and workflow
 - **[Tooling](docs/TOOLING.md)** - Tools, setup, and build system guide
 
