@@ -57,9 +57,9 @@ flowchart TD
 - **Init System**: systemd (PID 1)
 - **System Tools**: systemd ecosystem preferred (systemd-timesyncd, systemd-networkd, systemd-resolved, etc.)
 - **Package Format**: RPM with mandatory GPG signatures and TPM-backed signing support
-- **File System**: ext4 with dm-verity for integrity
+- **Root Filesystem**: EROFS (Enhanced Read-Only File System) — immutable, compressed, with dm-verity integrity verification via a separate Verity Hash partition per slot
 - **Partition Table**: GPT with [Discoverable Partitions Specification (DPS)](https://uapi-group.org/specifications/specs/discoverable_partitions_specification/) type UUIDs on all partitions. On systems that support it, `systemd-gpt-auto-generator` auto-discovers and mounts partitions based on their DPS type UUIDs. DPS type UUIDs are set on all platforms regardless of whether auto-discovery is used for mounting.
-- **Root Filesystem**: Immutable, read-only with verified boot
+- **Mutable Data**: Separate data partition (`/var`) with OverlayFS for directories requiring write access (`/etc`). See [PARTITIONING.md](PARTITIONING.md) for full layout details.
 - **User Space**: Merged `/usr` (UsrMerge)
 - **Compression**: zstd level 11 for all compressed artifacts
 - **SBOM**: SPDX 3.0.1 software bill of materials for all images
@@ -68,7 +68,7 @@ flowchart TD
 - **SELinux**: Mandatory Access Control with targeted policy
 - **IMA/EVM**: Integrity Measurement Architecture with Extended Verification Module
 - **dm-verity**: Device-mapper integrity checking for root filesystem
-- **LUKS**: Encrypted storage for user data
+- **LUKS2**: Full Disk Encryption for rootfs (A/B slots) and persistent data partitions; TPM2-sealed keys for automated unlocking
 - **TPM 2.0**: Hardware security module support (where available)
 - **Secure Boot**: UEFI secure boot on x86_64 systems
 
@@ -123,8 +123,11 @@ k3s integrates with LamaDist's existing security architecture:
   - No privileged containers by default
 
 #### 4. Update System
-- **RAUC**: Robust Auto-Update Controller
-- **Dual Boot Slots**: A/B partition scheme for atomic updates
+- **RAUC**: Robust Auto-Update Controller with adaptive updates (`casync` chunker)
+- **Split A/B Slots**: Each slot has a separate Rootfs partition (LUKS2-encrypted EROFS) and Verity Hash partition
+- **Crypt Bundles**: Updates delivered as CMS-encrypted `crypt` bundles, protecting firmware during transport
+- **Mapper Device Targeting**: RAUC writes to the decrypted mapper device (e.g., `/dev/mapper/rootfs_b`) to preserve LUKS headers
+- **Adaptive Updates**: Only changed blocks are downloaded, reducing update bandwidth
 - **Rollback**: Automatic rollback on failed updates
 
 ---
@@ -585,8 +588,14 @@ On systems that support it (x86_64 UEFI), boot artifacts are packaged into a UKI
 
 ### 3. File System Integrity
 
+- **EROFS**: Enhanced Read-Only File System for root partition
+  - High-performance compressed read-only filesystem
+  - Immutable root — no runtime modifications possible
+  - Optimized for embedded and read-only use cases
+
 - **dm-verity**: Hash-tree based integrity verification of root filesystem
-  - Read-only root with cryptographic verification
+  - Separate Verity Hash partition per A/B slot (Merkle tree)
+  - `roothash` embedded in UKI ensures tight coupling between kernel and rootfs
   - Detects any tampering or corruption
   - Integrated with initramfs for early verification
 
@@ -594,6 +603,11 @@ On systems that support it (x86_64 UEFI), boot artifacts are packaged into a UKI
   - Extended attributes store signatures
   - Measures files at access time
   - Detects unauthorized modifications
+
+- **OverlayFS**: Mutable data on immutable root
+  - `/etc` overlay: persistent configuration on top of EROFS defaults
+  - Application data overlays (e.g., `/greengrass`) for runtime persistence
+  - Upper layers stored on the Data partition (`/var/overlay/`)
 
 ### 4. Mandatory Access Control
 
@@ -605,10 +619,12 @@ On systems that support it (x86_64 UEFI), boot artifacts are packaged into a UKI
 
 ### 5. Storage Encryption
 
-- **LUKS**: Full disk encryption for data partitions
+- **LUKS2**: Full Disk Encryption (FDE) for all OS and data partitions
+  - Rootfs A/B partitions: LUKS2 containers holding read-only EROFS; protects IP at rest
+  - Data partition (`/var`): LUKS2 container holding read-write ext4/xfs; protects user secrets at rest
   - AES-256 encryption
-  - TPM-sealed keys (where available)
-  - Protects data at rest
+  - TPM2-sealed keys for automated unlocking during boot (initramfs/systemd)
+  - dm-verity operates on the decrypted EROFS filesystem inside the LUKS container
 
 ### 6. Package Signing
 
@@ -639,36 +655,46 @@ LamaDist uses RAUC (Robust Auto-Update Controller) for safe, atomic updates:
 
 ```mermaid
 flowchart TD
-    subgraph layout["Update Partition Layout"]
+    subgraph layout["Partition Layout (Split A/B with Verity + FDE)"]
         direction TB
-        esp["Boot (ESP)\nEFI System Partition\nDPS type: C12A7328-…\nBootloader, kernels"]
-        subgraph slots["Root Filesystem Slots"]
-            slota["Slot A (Active)\n• rootfs (ext4 + dm-verity)\n• DPS root type UUID\n(immutable)"]
-            slotb["Slot B (Inactive)\n• rootfs (ext4 + dm-verity)\n• DPS root type UUID\n(immutable)"]
+        esp["Boot (ESP)\nEFI System Partition\nDPS type: C12A7328-…\nUKI images (A & B), RAUC state"]
+        subgraph slota["Slot A"]
+            rootfs_a["Rootfs A (LUKS2)\n(EROFS, immutable)\nDPS root type UUID"]
+            verity_a["Verity Hash A\n(Merkle tree for Rootfs A)\nDPS verity type UUID"]
         end
-        data["Data Partition (LUKS)\nDPS type: linux generic\nEncrypted persistent data\nUser data, config, state"]
+        subgraph slotb["Slot B"]
+            rootfs_b["Rootfs B (LUKS2)\n(EROFS, immutable)\nDPS root type UUID"]
+            verity_b["Verity Hash B\n(Merkle tree for Rootfs B)\nDPS verity type UUID"]
+        end
+        data["Data Partition (LUKS2)\nDPS /var type UUID\next4 / xfs (Read-Write)\nOverlayFS upper layers"]
     end
-    esp --- slots --- data
+    esp --- slota --- slotb --- data
 ```
 
 **Key Partition Features:**
 
-- **Boot (ESP)**: UEFI system partition with bootloader and kernel images; DPS type UUID `C12A7328-F81F-11D2-BA4B-00A0C93EC93B`
-- **Slot A/B**: Immutable, read-only root filesystems with dm-verity integrity checking; DPS architecture-specific root partition type UUID (e.g., `4F68BCE3-…` for x86-64, `B921B045-…` for AArch64)
-- **Data Partition**: LUKS-encrypted volume for all persistent, mutable data; DPS type UUID assigned per partition purpose
-- **Immutability**: Root filesystems cannot be modified at runtime
-- **Encryption**: All persistent user data is encrypted with LUKS
+- **Boot (ESP)**: UEFI system partition containing UKI images for both slots and RAUC slot status; DPS type UUID `C12A7328-F81F-11D2-BA4B-00A0C93EC93B`
+- **Rootfs A/B**: LUKS2-encrypted containers holding EROFS (Enhanced Read-Only File System) — immutable, compressed root filesystems; DPS architecture-specific root partition type UUID (e.g., `4F68BCE3-…` for x86-64, `69DAD710-…` for AArch64)
+- **Verity Hash A/B**: dm-verity Merkle tree for the corresponding decrypted rootfs slot; DPS architecture-specific verity partition type UUID (e.g., `77FF5F63-…` for x86-64, `DF3300CE-…` for AArch64)
+- **Data Partition**: LUKS2-encrypted read-write volume for all persistent, mutable data mounted at `/var`; OverlayFS upper layers for `/etc` and application data; DPS `/var` type UUID `4D21B016-…`
+- **Immutability**: Decrypted root filesystems are EROFS and cannot be modified at runtime
+- **Full Disk Encryption**: All Rootfs (A/B) and Data partitions are LUKS2-encrypted; TPM2-sealed keys enable automated unlocking during boot
+- **Secure Delivery**: RAUC updates delivered as CMS-encrypted `crypt` bundles; RAUC writes to decrypted mapper devices to preserve LUKS headers
 - **Discoverable Partitions**: All partitions carry [DPS type UUIDs](https://uapi-group.org/specifications/specs/discoverable_partitions_specification/) regardless of platform. On systems that support it (GPT + systemd), `systemd-gpt-auto-generator` auto-discovers and mounts partitions without `/etc/fstab` entries. On platforms where auto-discovery is not used for mounting, DPS type UUIDs are still set for specification compliance and tooling interoperability.
+- **Adaptive Updates**: RAUC uses the `casync` chunker to update only changed blocks. The split verity partition is small (~64 MB for a 2 GB image) and is updated alongside the rootfs.
+
+See [PARTITIONING.md](PARTITIONING.md) for per-platform GPT layouts, FDE strategy, device node examples, OverlayFS strategy, and WKS templates.
 
 ### Update Process
 
-1. **Download**: Update bundle downloaded (signed RAUC bundle)
-2. **Verification**: Bundle signature verified
-3. **Installation**: Update installed to inactive slot
-4. **Activation**: Bootloader configured to boot from new slot
-5. **Reboot**: System reboots into updated slot
-6. **Verification**: System health checks run
-7. **Commit**: Update marked good, or automatic rollback on failure
+1. **Download**: RAUC `crypt` bundle downloaded (CMS-encrypted, signed)
+2. **Decryption**: Bundle decrypted on-device
+3. **Verification**: Bundle signature verified
+4. **Installation**: Update written to decrypted mapper device of inactive slot (preserves LUKS headers)
+5. **Activation**: Bootloader configured to boot from new slot
+6. **Reboot**: System reboots into updated slot
+7. **Verification**: System health checks run
+8. **Commit**: Update marked good, or automatic rollback on failure
 
 ### Rollback Mechanism
 
@@ -742,6 +768,7 @@ flowchart TD
 
 ## References
 
+- [PARTITIONING.md](PARTITIONING.md) — Detailed partition layouts, OverlayFS strategy, device nodes, and WKS templates
 - [Yocto Project Documentation](https://docs.yoctoproject.org/)
 - [KAS Documentation](https://kas.readthedocs.io/)
 - [RAUC Documentation](https://rauc.readthedocs.io/)

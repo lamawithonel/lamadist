@@ -364,36 +364,49 @@ The development is organized into phases, with each phase building upon the prev
 - UKI executable generated for UEFI systems (x86_64)
 
 #### 4.3 Storage and Partitioning
-- [ ] Implement WIC-based disk image generation
-- [ ] Configure dm-verity for immutable rootfs integrity
-- [ ] Set up LUKS encryption for persistent data partition in A/B layout
-- [ ] Assign Discoverable Partitions Specification (DPS) type UUIDs to all GPT partitions
+- [ ] Implement WIC-based disk image generation with per-platform WKS templates (see [PARTITIONING.md](PARTITIONING.md))
+- [ ] Configure EROFS root filesystem for immutable, compressed rootfs
+- [ ] Implement split A/B partition layout: separate Rootfs and Verity Hash partitions per slot
+- [ ] Configure dm-verity with separate Merkle tree partitions and `roothash` embedded in UKI
+- [ ] Implement LUKS2 Full Disk Encryption on Rootfs A/B and Data partitions
+- [ ] Configure TPM2-sealed key management for automated LUKS unlocking during boot
+- [ ] Configure OverlayFS for mutable directories (`/etc`, application data) with upper layers on encrypted data partition
+- [ ] Assign Discoverable Partitions Specification (DPS) type UUIDs to all GPT partitions (architecture-specific root, verity, ESP, `/var`)
 - [ ] Enable `systemd-gpt-auto-generator` partition auto-discovery on supported platforms
+- [ ] Implement platform-specific partition layouts (x86_64, Orin NX, Rockchip with raw sector bootloaders)
 - [ ] Test partition resizing and management
 - [ ] Verify rootfs immutability and write protection
 
 **Acceptance Criteria:**
-- Disk images are properly partitioned with A/B layout
-- All GPT partitions carry correct DPS type UUIDs (architecture-specific root, ESP, data, etc.)
+- Disk images are properly partitioned with split A/B layout (Rootfs + Verity Hash per slot)
+- Root filesystem uses EROFS with dm-verity integrity verification via separate hash partition
+- All Rootfs (A/B) and Data partitions are LUKS2-encrypted
+- TPM2-sealed keys enable automated LUKS unlocking during boot (initramfs/systemd)
+- All GPT partitions carry correct DPS type UUIDs (architecture-specific root, verity, ESP, `/var`, etc.)
 - On platforms supporting DPS auto-discovery, partitions are mounted via `systemd-gpt-auto-generator` without `/etc/fstab` entries
 - DPS type UUIDs are set on all platforms regardless of whether auto-discovery is used for mounting
-- Integrity verification works with dm-verity
-- LUKS encryption is functional for persistent data
-- Storage is optimally configured
-- Rootfs is immutable and read-only
+- OverlayFS provides mutable `/etc` and application data directories on top of immutable EROFS root
+- Platform-specific layouts implemented for x86_64, Orin NX, and Rockchip (including raw sector bootloader partitions)
+- Rootfs is immutable and read-only (EROFS inside LUKS2 container)
 
 #### 4.4 OTA Update System
-- [ ] Integrate RAUC for OTA updates
-- [ ] Configure update bundles and slots
-- [ ] Implement update verification
+- [ ] Integrate RAUC for OTA updates with adaptive update support (`casync` chunker)
+- [ ] Configure RAUC `crypt` bundles for CMS-encrypted secure delivery
+- [ ] Configure update bundles for split slot layout (rootfs + verity hash per slot)
+- [ ] Configure RAUC slot definitions to target decrypted mapper devices (preserves LUKS headers)
+- [ ] Configure RAUC slot definitions matching the split A/B partition scheme
+- [ ] Implement update verification (bundle signature + dm-verity root hash)
 - [ ] Test rollback mechanisms
 - [ ] Create update documentation for users
 
 **Acceptance Criteria:**
-- OTA updates work reliably
+- OTA updates work reliably with adaptive (delta) updates via `casync`
+- RAUC delivers updates as CMS-encrypted `crypt` bundles (firmware never exposed in plaintext during transit)
+- RAUC writes to decrypted mapper devices (e.g., `/dev/mapper/rootfs_b`), preserving LUKS headers
+- RAUC correctly targets split rootfs and verity hash partitions per slot
 - Rollback is automatic on failure
 - Update process is documented
-- Updates preserve user data
+- Updates preserve user data on the encrypted persistent data partition
 
 #### 4.5 Deployment Workflows
 - [ ] Create USB installer images
