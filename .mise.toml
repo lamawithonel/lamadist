@@ -64,6 +64,11 @@ ${CONTAINER_CMD} run --rm -it \
 
 [tasks.ci-build]
 description = "Build with CI settings (force checkout, update)"
+usage = '''
+flag "--bsp" help="BSP target to build" default="x86_64" {
+    choices "x86_64" "orin-nx" "rk1" "soquartz"
+}
+'''
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
@@ -239,7 +244,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Aborted."
     exit 1
 fi
-rm -rf "${HOST_SSTATE_DIR:?}"/*
+rm -rf "${HOST_SSTATE_DIR}"/*
 echo "Cleaned shared state cache."
 """
 
