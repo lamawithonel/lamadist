@@ -44,12 +44,16 @@ ENV LANGUAGE en_US:en
 ENV LANG     en_US.UTF-8
 ENV LC_ALL   en_US.UTF-8
 
-# Install kas and other Python packages
-COPY requirements.txt /root/requirements.txt
+# Install uv (fast Python package manager)
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Install kas and other Python packages via uv
+COPY pyproject.toml /root/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache \
 
-    # Install out-of-tree Python packages
-    pip install --no-cache-dir --prefer-binary --ignore-installed -r /root/requirements.txt &&\
+    # Compile locked requirements and install
+    uv pip compile /root/pyproject.toml -o /root/requirements.txt --system &&\
+    uv pip install --system -r /root/requirements.txt &&\
 
     # Cleanup
     rm -rf /tmp/* /var/tmp/*

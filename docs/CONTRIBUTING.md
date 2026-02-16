@@ -60,8 +60,11 @@ See [TOOLING.md](TOOLING.md) for detailed setup instructions.
    git fetch upstream
    ```
 
-3. **Install Development Tools**
+3. **Trust and Install Development Tools**
    ```bash
+   # Trust the mise config (required for MISE_PARANOID=1 users, recommended for all)
+   mise trust
+
    # mise manages all tooling — no Python, venv, or Make needed on the host
    mise install
    ```
