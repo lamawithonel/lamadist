@@ -328,31 +328,26 @@ mise settings set paranoid 1
 To avoid errors when users run mise in paranoid mode, LamaDist follows these
 rules for `.mise.toml`:
 
-1. **Every env var that defines a `default` must also set `required = true`.**
-   Without `required = true`, paranoid mode may silently drop the variable
-   instead of applying the default.
-
-   ```toml
-   # ✅ correct — works in both normal and paranoid mode
-   [env.LAMADIST_HOST_SSTATE_DIR]
-   default = "{{config_root}}/.cache/sstate"
-   required = true
-
-   # ❌ wrong — may fail under MISE_PARANOID=1
-   [env.LAMADIST_HOST_SSTATE_DIR]
-   default = "{{config_root}}/.cache/sstate"
-   ```
+1. **`mise trust` must be run** after cloning the repository and after every
+   edit to `.mise.toml` (or `.mise.local.toml`). In paranoid mode the file
+   contents are hashed, so any change requires re-trusting.
 
 2. **A `min_version` is set** at the top of `.mise.toml` to guarantee that
    the running mise version supports all features used in the config.
 
-3. **`mise trust` must be run** after cloning the repository and after every
-   edit to `.mise.toml` (or `.mise.local.toml`).
-
-4. **Non-standard env vars are prefixed with `LAMADIST_`** to avoid
+3. **Non-standard env vars are prefixed with `LAMADIST_`** to avoid
    collisions with other tools or the user's environment. Standard
    ecosystem variables consumed by KAS or Yocto/BitBake (e.g.,
    `KAS_WORK_DIR`, `SSTATE_DIR`) keep their canonical names.
+
+4. **Override env vars** via `.mise.local.toml` (git-ignored) or your shell
+   environment. For example, to use Docker instead of Podman:
+
+   ```toml
+   # .mise.local.toml
+   [env]
+   LAMADIST_CONTAINER_CMD = "docker"
+   ```
 
 ### Quick Setup for Paranoid Mode Users
 

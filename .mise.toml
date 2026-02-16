@@ -6,11 +6,12 @@
 # All tasks use `usage` specs for shell autocompletion of flags and arguments.
 # Run `mise tasks` to list available tasks.
 #
-# Compatible with `MISE_PARANOID=1`.  All env vars that define a default also
-# set `required = true` so mise never silently drops them in paranoid mode.
+# Compatible with `MISE_PARANOID=1`.  After editing this file re-trust it:
+# `mise trust`
+#
 # Non-standard env vars are prefixed with LAMADIST_ to avoid conflicts;
 # standard KAS / Yocto vars (KAS_WORK_DIR, SSTATE_DIR) keep their names.
-# After editing this file you must re-trust it: `mise trust`
+# Override any LAMADIST_* var in .mise.local.toml or your shell environment.
 
 min_version = "2024.9.0"
 
@@ -18,22 +19,14 @@ min_version = "2024.9.0"
 # Project root (resolved at runtime)
 LAMADIST_PROJECT_DIR = "{{config_root}}"
 LAMADIST_CONTAINER_IMAGE = "lamawithonel/lamadist-builder:latest"
+LAMADIST_HOST_SSTATE_DIR = "{{config_root}}/.cache/sstate"
+
+# Container engine — override in .mise.local.toml or shell env to use docker
+LAMADIST_CONTAINER_CMD = "podman"
 
 # Standard KAS / Yocto env vars (no prefix — consumed by KAS and BitBake)
 KAS_WORK_DIR = "/0"
 SSTATE_DIR = "/sstate"
-
-[env.LAMADIST_HOST_SSTATE_DIR]
-default = "{{config_root}}/.cache/sstate"
-required = true
-
-# ──────────────────────────────────────────────
-# Container engine detection
-# ──────────────────────────────────────────────
-# Prefer podman; fall back to docker.
-[env.LAMADIST_CONTAINER_CMD]
-default = "podman"
-required = true
 
 # ──────────────────────────────────────────────
 # Build tasks
@@ -42,7 +35,7 @@ required = true
 [tasks.build]
 description = "Build images for specified BSP"
 usage = '''
-flag "--bsp" help="BSP target to build" default="x86_64" {
+flag "--bsp <bsp>" help="BSP target to build" default="x86_64" {
     choices "x86_64" "orin-nx" "rk1" "soquartz"
 }
 '''
@@ -77,7 +70,7 @@ ${LAMADIST_CONTAINER_CMD} run --rm -it \
 [tasks.ci-build]
 description = "Build with CI settings (force checkout, update)"
 usage = '''
-flag "--bsp" help="BSP target to build" default="x86_64" {
+flag "--bsp <bsp>" help="BSP target to build" default="x86_64" {
     choices "x86_64" "orin-nx" "rk1" "soquartz"
 }
 '''
@@ -124,7 +117,7 @@ ${LAMADIST_CONTAINER_CMD} build -t "${LAMADIST_CONTAINER_IMAGE}" "${LAMADIST_PRO
 [tasks.shell]
 description = "Interactive KAS shell for specified BSP"
 usage = '''
-flag "--bsp" help="BSP target" default="x86_64" {
+flag "--bsp <bsp>" help="BSP target" default="x86_64" {
     choices "x86_64" "orin-nx" "rk1" "soquartz"
 }
 '''
@@ -185,7 +178,7 @@ ${LAMADIST_CONTAINER_CMD} run --rm -it \
 [tasks.dump]
 description = "Dump KAS configuration for specified BSP"
 usage = '''
-flag "--bsp" help="BSP target" default="x86_64" {
+flag "--bsp <bsp>" help="BSP target" default="x86_64" {
     choices "x86_64" "orin-nx" "rk1" "soquartz"
 }
 '''
