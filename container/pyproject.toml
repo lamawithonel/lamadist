@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Python dependencies for the LamaDist KAS build container.
+#
+# See docs/TOOLING.md for details.
+
+[project]
+name = "lamadist-builder"
+version = "0.0.0"
+description = "Python dependencies for the LamaDist KAS build container"
+requires-python = ">=3.10"
+dependencies = [
+  "kas",
+]

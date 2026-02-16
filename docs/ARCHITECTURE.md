@@ -360,7 +360,7 @@ LamaDist supports multiple hardware platforms:
 
 ```mermaid
 flowchart TD
-    pyproject["pyproject.toml"] --> uv["uv pip compile"]
+    pyproject["container/pyproject.toml"] --> uv["uv pip compile"]
     uv --> reqs["container/requirements.txt"]
     reqs --> container["Build Container\n(Podman)"]
     container --> kas_bb["KAS + BitBake"]

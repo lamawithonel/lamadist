@@ -196,8 +196,11 @@ local_conf_header:
 
   # FIXME: Create a private sstate-cache and hashserv server.  Trusting public servers is insecure.
   Cache: |
-    BB_HASHSERVE = 'auto'
-    BB_HASHSERVE_UPSTREAM = 'hashserv.yocto.io:8687'
-    BB_SIGNATURE_HANDLER = 'OEEquivHash'
-    SSTATE_DIR = '/home/builder/sstate-cache'
+    # NOTE: SSTATE_DIR is set via env var (container mount at /sstate); do not hardcode here.
+    # Hash equivalence disabled until a private hashserv is deployed (see FIXME above).
+    # Connecting to the public upstream during bitbake init can cause a 60 s server
+    # timeout when DNS or TCP is unreachable from inside the build container.
+    # BB_HASHSERVE = 'auto'
+    # BB_HASHSERVE_UPSTREAM = 'hashserv.yocto.io:8687'
+    # BB_SIGNATURE_HANDLER = 'OEEquivHash'
     SSTATE_MIRRORS = 'file://.* http://sstate.yoctoproject.org/PATH;downloadfilename=PATH'
