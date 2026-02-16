@@ -5,6 +5,12 @@
 #
 # All tasks use `usage` specs for shell autocompletion of flags and arguments.
 # Run `mise tasks` to list available tasks.
+#
+# Compatible with `MISE_PARANOID=1`.  All env vars that define a default also
+# set `required = true` so mise never silently drops them in paranoid mode.
+# After editing this file you must re-trust it: `mise trust`
+
+min_version = "2024.9.0"
 
 [env]
 # Project root (resolved at runtime)
@@ -15,6 +21,7 @@ SSTATE_DIR = "/sstate"
 
 [env.HOST_SSTATE_DIR]
 default = "{{config_root}}/.cache/sstate"
+required = true
 
 # ──────────────────────────────────────────────
 # Container engine detection
@@ -22,6 +29,7 @@ default = "{{config_root}}/.cache/sstate"
 # Prefer podman; fall back to docker.
 [env.CONTAINER_CMD]
 default = "podman"
+required = true
 
 # ──────────────────────────────────────────────
 # Build tasks
