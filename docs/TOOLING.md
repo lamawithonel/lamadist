@@ -218,7 +218,10 @@ mise is the single CLI entrypoint for all LamaDist development tasks. Tasks use 
 | Task | Description |
 |------|-------------|
 | `mise run build --bsp <bsp>` | Build images for specified BSP (default: x86_64) |
-| `mise run ci-build` | Build with CI settings (force checkout, update) |
+| `mise run ci-build` | Build the distribution in CI mode |
+| `mise run ci-validate-config` | Validate KAS configuration without building |
+| `mise run ci-check-artifacts` | Validate build artifacts exist and are well-formed |
+| `mise run ci-test-qemu` | Boot test build artifacts with QEMU | Build with CI settings (force checkout, update) |
 | `mise run container` | Build the KAS build container image |
 
 **Available BSPs**: `x86_64`, `orin-nx`, `rk1`, `soquartz`
@@ -323,7 +326,280 @@ export MISE_PARANOID=1
 mise settings set paranoid 1
 ```
 
-### Paranoid Mode Requirements for `.mise.toml`
+### GitHub Actions CI
+
+### Workflow Overview
+
+LamaDist uses GitHub Actions for continuous integration. Due to the resource-intensive
+nature of Yocto builds (large disk, RAM, and build time), the CI pipeline requires a
+**self-hosted runner** for build and test jobs.
+
+The CI workflow is defined in `.github/workflows/ci.yml` and consists of these jobs:
+
+```mermaid
+graph LR
+  A[container-build] --> B[validate-config]
+  A --> C[build]
+  C --> D[check-artifacts]
+  C --> E[test-qemu]
+```
+
+1. **container-build** — Build the build container image
+2. **validate-config** — Validate KAS configuration via `kas dump`
+3. **build** — Full distribution build via `mise run ci-build`
+4. **check-artifacts** — Validate build output (WIC image, kernel)
+5. **test-qemu** — Boot the image in QEMU and verify login prompt
+
+### Workflow File
+
+Create `.github/workflows/ci.yml` with the following content:
+
+```yaml
+---
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  container-build:
+    name: Build Container
+    runs-on: [self-hosted, linux, lamadist]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Build container image
+        run: mise run container
+
+  validate-config:
+    name: Validate KAS Config
+    needs: container-build
+    runs-on: [self-hosted, linux, lamadist]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Validate configuration
+        run: mise run ci-validate-config
+
+  build:
+    name: Build Distribution
+    needs: container-build
+    runs-on: [self-hosted, linux, lamadist]
+    timeout-minutes: 480
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Build
+        run: mise run ci-build
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts-${{ github.sha }}
+          path: build/tmp/deploy/images/
+          retention-days: 7
+
+  check-artifacts:
+    name: Validate Artifacts
+    needs: build
+    runs-on: [self-hosted, linux, lamadist]
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-${{ github.sha }}
+          path: build/tmp/deploy/images/
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Validate artifacts
+        run: mise run ci-check-artifacts
+
+  test-qemu:
+    name: QEMU Boot Test
+    needs: build
+    runs-on: [self-hosted, linux, lamadist]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts-${{ github.sha }}
+          path: build/tmp/deploy/images/
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: QEMU boot test
+        run: mise run ci-test-qemu
+```
+
+### Self-Hosted Runner Setup
+
+GitHub-hosted runners lack sufficient resources for Yocto builds. A self-hosted runner
+is required with the following specifications.
+
+#### Host Requirements
+
+| Resource | Minimum | Recommended |
+|----------|---------|-------------|
+| CPU | 4 cores | 8+ cores |
+| RAM | 16 GB | 32+ GB |
+| Disk | 100 GB free | 200+ GB SSD |
+| OS | Linux (x86_64) | Fedora, Ubuntu 22.04+ |
+
+Required host packages:
+
+- `podman` (rootless mode)
+- `qemu-system-x86_64` and `qemu-img`
+- `git`
+- `curl`
+
+#### Runner Installation with Podman
+
+The self-hosted runner can run as a container using `podman` and `systemd`:
+
+1. **Create a dedicated user:**
+
+   ```sh
+   sudo useradd -m -s /bin/bash github-runner
+   sudo loginctl enable-linger github-runner
+   ```
+
+2. **Create the runner working directory:**
+
+   ```sh
+   sudo -u github-runner mkdir -p /home/github-runner/actions-runner
+   sudo -u github-runner mkdir -p /home/github-runner/lamadist-sstate
+   ```
+
+3. **Create `podman-compose.yml`:**
+
+   Save as `/home/github-runner/podman-compose.yml`:
+
+   ```yaml
+   version: "3"
+   services:
+     runner:
+       image: ghcr.io/actions/actions-runner:latest
+       restart: unless-stopped
+       environment:
+         - RUNNER_NAME=lamadist-builder
+         - RUNNER_LABELS=self-hosted,linux,lamadist
+         - RUNNER_TOKEN=${RUNNER_TOKEN}
+         - RUNNER_REPOSITORY_URL=https://github.com/<org>/lamadist
+         - RUNNER_WORKDIR=/home/runner/_work
+       volumes:
+         - /home/github-runner/actions-runner:/home/runner/_work
+         - /home/github-runner/lamadist-sstate:/sstate-cache
+         - /var/run/user/1001/podman/podman.sock:/var/run/docker.sock
+       security_opt:
+         - label=disable
+       userns_mode: keep-id
+   ```
+
+   > **Note:** Adjust the podman socket path for the `github-runner` user's UID.
+   > Generate `RUNNER_TOKEN` from **Settings → Actions → Runners → New self-hosted runner**
+   > in the GitHub repository.
+
+4. **Create the `systemd` service:**
+
+   Save as `/home/github-runner/.config/systemd/user/github-runner.service`:
+
+   ```ini
+   [Unit]
+   Description=GitHub Actions Self-Hosted Runner (LamaDist)
+   After=network-online.target
+   Wants=network-online.target
+
+   [Service]
+   Type=simple
+   WorkingDirectory=/home/github-runner
+   ExecStartPre=/usr/bin/podman-compose pull
+   ExecStart=/usr/bin/podman-compose up --abort-on-container-exit
+   ExecStop=/usr/bin/podman-compose down
+   Restart=on-failure
+   RestartSec=30
+
+   [Install]
+   WantedBy=default.target
+   ```
+
+5. **Enable and start the service:**
+
+   ```sh
+   sudo -u github-runner systemctl --user daemon-reload
+   sudo -u github-runner systemctl --user enable github-runner.service
+   sudo -u github-runner systemctl --user start github-runner.service
+   ```
+
+6. **Verify the runner appears in GitHub:**
+
+   Check **Settings → Actions → Runners** in the repository.
+
+#### Alternative: Direct Runner Installation
+
+If the containerized runner has access issues with nested `podman`, install the runner
+directly on the host:
+
+```sh
+# Download latest runner
+cd /home/github-runner/actions-runner
+curl -o actions-runner-linux-x64.tar.gz -L \
+  https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64-2.321.0.tar.gz
+tar xzf actions-runner-linux-x64.tar.gz
+
+# Configure
+./config.sh \
+  --url https://github.com/<org>/lamadist \
+  --token <RUNNER_TOKEN> \
+  --name lamadist-builder \
+  --labels self-hosted,linux,lamadist \
+  --work _work
+
+# Install as systemd service
+sudo ./svc.sh install github-runner
+sudo ./svc.sh start
+```
+
+> **Tip:** For the direct installation, ensure `mise` is installed for the
+> `github-runner` user and that `podman` is configured for rootless operation
+> (`podman system migrate` after user creation).
+
+## Paranoid Mode Requirements for `.mise.toml`
 
 To avoid errors when users run mise in paranoid mode, LamaDist follows these
 rules for `.mise.toml`:

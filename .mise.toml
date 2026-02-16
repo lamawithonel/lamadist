@@ -110,6 +110,145 @@ ${LAMADIST_CONTAINER_CMD} build -t "${LAMADIST_CONTAINER_IMAGE}" "${LAMADIST_PRO
 # Development tasks
 # ──────────────────────────────────────────────
 
+[tasks.ci-validate-config]
+description = "Validate the KAS configuration in CI"
+depends = ["container"]
+usage = '''
+flag "--bsp <bsp>"
+'''
+run = '''
+set -euo pipefail
+
+BSP="${usage_bsp:-qemux86-64}"
+
+KAS_CONFIG="kas/main.kas.yml:kas/bsp/${BSP}.kas.yml"
+
+echo "==> Validating KAS configuration for BSP: ${BSP}"
+
+"${LAMADIST_CONTAINER_CMD}" run --rm \
+  --userns=keep-id \
+  -v "${LAMADIST_PROJECT_DIR}:/work" \
+  -v "${LAMADIST_HOST_SSTATE_DIR}:${SSTATE_DIR}" \
+  -e KAS_WORK_DIR="${KAS_WORK_DIR}" \
+  -e SSTATE_DIR="${SSTATE_DIR}" \
+  "${LAMADIST_CONTAINER_IMAGE}" \
+  kas dump "${KAS_CONFIG}"
+
+echo "==> KAS configuration validation passed"
+'''
+
+[tasks.ci-check-artifacts]
+description = "Validate build artifacts in CI"
+usage = '''
+flag "--bsp <bsp>"
+'''
+run = '''
+set -euo pipefail
+
+BSP="${usage_bsp:-qemux86-64}"
+
+DEPLOY_DIR="${LAMADIST_PROJECT_DIR}/build/tmp/deploy/images/${BSP}"
+
+echo "==> Checking build artifact directory: ${DEPLOY_DIR}"
+if [ ! -d "${DEPLOY_DIR}" ]; then
+  echo "ERROR: Deploy directory does not exist: ${DEPLOY_DIR}"
+  exit 1
+fi
+
+echo "==> Listing build artifacts:"
+ls -lh "${DEPLOY_DIR}/"
+
+# Check for WIC image
+WIC_IMAGE=$(find "${DEPLOY_DIR}" -maxdepth 1 \( -name "*.wic" -o -name "*.wic.gz" -o -name "*.wic.bz2" \) | head -1)
+if [ -z "${WIC_IMAGE}" ]; then
+  echo "ERROR: No WIC image found in ${DEPLOY_DIR}"
+  exit 1
+fi
+echo "==> Found WIC image: ${WIC_IMAGE}"
+echo "==> Size: $(du -h "${WIC_IMAGE}" | cut -f1)"
+
+# Check for kernel image
+KERNEL_IMAGE=$(find "${DEPLOY_DIR}" -maxdepth 1 -name "bzImage*" | head -1)
+if [ -z "${KERNEL_IMAGE}" ]; then
+  echo "WARNING: No kernel image (bzImage) found in ${DEPLOY_DIR}"
+else
+  echo "==> Found kernel image: ${KERNEL_IMAGE}"
+fi
+
+echo "==> Build artifact validation passed"
+'''
+
+[tasks.ci-test-qemu]
+description = "Boot test build artifacts with QEMU"
+usage = '''
+flag "--bsp <bsp>"
+flag "--timeout <timeout>"
+'''
+run = '''
+set -euo pipefail
+
+BSP="${usage_bsp:-qemux86-64}"
+TIMEOUT="${usage_timeout:-300}"
+
+DEPLOY_DIR="${LAMADIST_PROJECT_DIR}/build/tmp/deploy/images/${BSP}"
+QEMU_LOG="${LAMADIST_PROJECT_DIR}/build/qemu-boot-${BSP}.log"
+
+# Find the WIC image
+WIC_IMAGE=$(find "${DEPLOY_DIR}" -maxdepth 1 -name "*.wic" | head -1)
+if [ -z "${WIC_IMAGE}" ]; then
+  # Try compressed
+  WIC_GZ=$(find "${DEPLOY_DIR}" -maxdepth 1 -name "*.wic.gz" | head -1)
+  if [ -z "${WIC_GZ}" ]; then
+    echo "ERROR: No WIC image found in ${DEPLOY_DIR}"
+    exit 1
+  fi
+  echo "==> Decompressing ${WIC_GZ}..."
+  gunzip -k "${WIC_GZ}"
+  WIC_IMAGE="${WIC_GZ%.gz}"
+fi
+
+echo "==> Booting QEMU with image: ${WIC_IMAGE}"
+echo "==> Timeout: ${TIMEOUT}s"
+
+# Boot QEMU in nographic mode, capturing output
+timeout "${TIMEOUT}" qemu-system-x86_64 \
+  -machine q35 \
+  -m 1024 \
+  -nographic \
+  -drive file="${WIC_IMAGE}",format=raw,if=virtio \
+  -netdev user,id=net0 \
+  -device virtio-net-pci,netdev=net0 \
+  -serial mon:stdio \
+  -no-reboot \
+  2>&1 | tee "${QEMU_LOG}" &
+
+QEMU_PID=$!
+
+# Wait for boot and check for login prompt
+BOOT_SUCCESS=false
+for i in $(seq 1 60); do
+  sleep 5
+  if grep -q "login:" "${QEMU_LOG}" 2>/dev/null; then
+    BOOT_SUCCESS=true
+    break
+  fi
+  echo "==> Waiting for boot... (attempt ${i}/60)"
+done
+
+# Clean up QEMU
+kill "${QEMU_PID}" 2>/dev/null || true
+wait "${QEMU_PID}" 2>/dev/null || true
+
+if [ "${BOOT_SUCCESS}" = true ]; then
+  echo "==> QEMU boot test PASSED — login prompt detected"
+else
+  echo "==> QEMU boot test FAILED — no login prompt within timeout"
+  echo "==> Last 50 lines of boot log:"
+  tail -50 "${QEMU_LOG}" || true
+  exit 1
+fi
+'''
+
 [tasks.shell]
 description = "Interactive KAS shell for specified BSP"
 usage = '''
