@@ -173,7 +173,7 @@ EOF
 ```bash
 # Default location: .cache/sstate/
 # Override with environment variable
-export HOST_SSTATE_DIR=/path/to/sstate
+export LAMADIST_HOST_SSTATE_DIR=/path/to/sstate
 ```
 
 **Download Directory**: Source tarballs
@@ -334,12 +334,12 @@ rules for `.mise.toml`:
 
    ```toml
    # ✅ correct — works in both normal and paranoid mode
-   [env.HOST_SSTATE_DIR]
+   [env.LAMADIST_HOST_SSTATE_DIR]
    default = "{{config_root}}/.cache/sstate"
    required = true
 
    # ❌ wrong — may fail under MISE_PARANOID=1
-   [env.HOST_SSTATE_DIR]
+   [env.LAMADIST_HOST_SSTATE_DIR]
    default = "{{config_root}}/.cache/sstate"
    ```
 
@@ -348,6 +348,11 @@ rules for `.mise.toml`:
 
 3. **`mise trust` must be run** after cloning the repository and after every
    edit to `.mise.toml` (or `.mise.local.toml`).
+
+4. **Non-standard env vars are prefixed with `LAMADIST_`** to avoid
+   collisions with other tools or the user's environment. Standard
+   ecosystem variables consumed by KAS or Yocto/BitBake (e.g.,
+   `KAS_WORK_DIR`, `SSTATE_DIR`) keep their canonical names.
 
 ### Quick Setup for Paranoid Mode Users
 

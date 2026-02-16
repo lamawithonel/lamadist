@@ -8,18 +8,22 @@
 #
 # Compatible with `MISE_PARANOID=1`.  All env vars that define a default also
 # set `required = true` so mise never silently drops them in paranoid mode.
+# Non-standard env vars are prefixed with LAMADIST_ to avoid conflicts;
+# standard KAS / Yocto vars (KAS_WORK_DIR, SSTATE_DIR) keep their names.
 # After editing this file you must re-trust it: `mise trust`
 
 min_version = "2024.9.0"
 
 [env]
 # Project root (resolved at runtime)
-PROJECT_DIR = "{{config_root}}"
+LAMADIST_PROJECT_DIR = "{{config_root}}"
+LAMADIST_CONTAINER_IMAGE = "lamawithonel/lamadist-builder:latest"
+
+# Standard KAS / Yocto env vars (no prefix — consumed by KAS and BitBake)
 KAS_WORK_DIR = "/0"
-CONTAINER_IMAGE = "lamawithonel/lamadist-builder:latest"
 SSTATE_DIR = "/sstate"
 
-[env.HOST_SSTATE_DIR]
+[env.LAMADIST_HOST_SSTATE_DIR]
 default = "{{config_root}}/.cache/sstate"
 required = true
 
@@ -27,7 +31,7 @@ required = true
 # Container engine detection
 # ──────────────────────────────────────────────
 # Prefer podman; fall back to docker.
-[env.CONTAINER_CMD]
+[env.LAMADIST_CONTAINER_CMD]
 default = "podman"
 required = true
 
@@ -51,22 +55,22 @@ BSP="${usage_bsp:-x86_64}"
 KAS_CONFIG="${KAS_WORK_DIR}/kas/main.kas.yml:${KAS_WORK_DIR}/kas/bsp/${BSP}.kas.yml"
 KAS_DEBUG="${KAS_WORK_DIR}/kas/extras/debug.kas.yml"
 
-mkdir -p "${HOST_SSTATE_DIR}"
+mkdir -p "${LAMADIST_HOST_SSTATE_DIR}"
 
 KAS_ENV_LOCAL=""
-if [[ -f "${PROJECT_DIR}/.kas.env.local" ]]; then
-    KAS_ENV_LOCAL="--env-file ${PROJECT_DIR}/.kas.env.local"
+if [[ -f "${LAMADIST_PROJECT_DIR}/.kas.env.local" ]]; then
+    KAS_ENV_LOCAL="--env-file ${LAMADIST_PROJECT_DIR}/.kas.env.local"
 fi
 
-${CONTAINER_CMD} run --rm -it \
+${LAMADIST_CONTAINER_CMD} run --rm -it \
     --privileged \
     -v /dev:/dev \
-    -v "${HOST_SSTATE_DIR}:${SSTATE_DIR}" \
+    -v "${LAMADIST_HOST_SSTATE_DIR}:${SSTATE_DIR}" \
     -e "SSTATE_DIR=${SSTATE_DIR}" \
-    -v "${PROJECT_DIR}:${KAS_WORK_DIR}" \
+    -v "${LAMADIST_PROJECT_DIR}:${KAS_WORK_DIR}" \
     -e "KAS_WORK_DIR=${KAS_WORK_DIR}" \
-    --env-file "${PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
-    "${CONTAINER_IMAGE}" \
+    --env-file "${LAMADIST_PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
+    "${LAMADIST_CONTAINER_IMAGE}" \
     --log-level debug build "${KAS_CONFIG}:${KAS_DEBUG}"
 """
 
@@ -85,22 +89,22 @@ BSP="${usage_bsp:-x86_64}"
 
 KAS_CONFIG="${KAS_WORK_DIR}/kas/main.kas.yml:${KAS_WORK_DIR}/kas/bsp/${BSP}.kas.yml"
 
-mkdir -p "${HOST_SSTATE_DIR}"
+mkdir -p "${LAMADIST_HOST_SSTATE_DIR}"
 
 KAS_ENV_LOCAL=""
-if [[ -f "${PROJECT_DIR}/.kas.env.local" ]]; then
-    KAS_ENV_LOCAL="--env-file ${PROJECT_DIR}/.kas.env.local"
+if [[ -f "${LAMADIST_PROJECT_DIR}/.kas.env.local" ]]; then
+    KAS_ENV_LOCAL="--env-file ${LAMADIST_PROJECT_DIR}/.kas.env.local"
 fi
 
-${CONTAINER_CMD} run --rm -it \
+${LAMADIST_CONTAINER_CMD} run --rm -it \
     --privileged \
     -v /dev:/dev \
-    -v "${HOST_SSTATE_DIR}:${SSTATE_DIR}" \
+    -v "${LAMADIST_HOST_SSTATE_DIR}:${SSTATE_DIR}" \
     -e "SSTATE_DIR=${SSTATE_DIR}" \
-    -v "${PROJECT_DIR}:${KAS_WORK_DIR}" \
+    -v "${LAMADIST_PROJECT_DIR}:${KAS_WORK_DIR}" \
     -e "KAS_WORK_DIR=${KAS_WORK_DIR}" \
-    --env-file "${PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
-    "${CONTAINER_IMAGE}" \
+    --env-file "${LAMADIST_PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
+    "${LAMADIST_CONTAINER_IMAGE}" \
     build --force-checkout --update "${KAS_CONFIG}"
 """
 
@@ -110,7 +114,7 @@ run = """
 #!/usr/bin/env bash
 set -euo pipefail
 
-${CONTAINER_CMD} build -t "${CONTAINER_IMAGE}" "${PROJECT_DIR}/container/"
+${LAMADIST_CONTAINER_CMD} build -t "${LAMADIST_CONTAINER_IMAGE}" "${LAMADIST_PROJECT_DIR}/container/"
 """
 
 # ──────────────────────────────────────────────
@@ -133,22 +137,22 @@ BSP="${usage_bsp:-x86_64}"
 KAS_CONFIG="${KAS_WORK_DIR}/kas/main.kas.yml:${KAS_WORK_DIR}/kas/bsp/${BSP}.kas.yml"
 KAS_DEBUG="${KAS_WORK_DIR}/kas/extras/debug.kas.yml"
 
-mkdir -p "${HOST_SSTATE_DIR}"
+mkdir -p "${LAMADIST_HOST_SSTATE_DIR}"
 
 KAS_ENV_LOCAL=""
-if [[ -f "${PROJECT_DIR}/.kas.env.local" ]]; then
-    KAS_ENV_LOCAL="--env-file ${PROJECT_DIR}/.kas.env.local"
+if [[ -f "${LAMADIST_PROJECT_DIR}/.kas.env.local" ]]; then
+    KAS_ENV_LOCAL="--env-file ${LAMADIST_PROJECT_DIR}/.kas.env.local"
 fi
 
-${CONTAINER_CMD} run --rm -it \
+${LAMADIST_CONTAINER_CMD} run --rm -it \
     --privileged \
     -v /dev:/dev \
-    -v "${HOST_SSTATE_DIR}:${SSTATE_DIR}" \
+    -v "${LAMADIST_HOST_SSTATE_DIR}:${SSTATE_DIR}" \
     -e "SSTATE_DIR=${SSTATE_DIR}" \
-    -v "${PROJECT_DIR}:${KAS_WORK_DIR}" \
+    -v "${LAMADIST_PROJECT_DIR}:${KAS_WORK_DIR}" \
     -e "KAS_WORK_DIR=${KAS_WORK_DIR}" \
-    --env-file "${PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
-    "${CONTAINER_IMAGE}" \
+    --env-file "${LAMADIST_PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
+    "${LAMADIST_CONTAINER_IMAGE}" \
     shell "${KAS_CONFIG}:${KAS_DEBUG}"
 """
 
@@ -158,23 +162,23 @@ run = """
 #!/usr/bin/env bash
 set -euo pipefail
 
-mkdir -p "${HOST_SSTATE_DIR}"
+mkdir -p "${LAMADIST_HOST_SSTATE_DIR}"
 
 KAS_ENV_LOCAL=""
-if [[ -f "${PROJECT_DIR}/.kas.env.local" ]]; then
-    KAS_ENV_LOCAL="--env-file ${PROJECT_DIR}/.kas.env.local"
+if [[ -f "${LAMADIST_PROJECT_DIR}/.kas.env.local" ]]; then
+    KAS_ENV_LOCAL="--env-file ${LAMADIST_PROJECT_DIR}/.kas.env.local"
 fi
 
-${CONTAINER_CMD} run --rm -it \
+${LAMADIST_CONTAINER_CMD} run --rm -it \
     --privileged \
     -v /dev:/dev \
-    -v "${HOST_SSTATE_DIR}:${SSTATE_DIR}" \
+    -v "${LAMADIST_HOST_SSTATE_DIR}:${SSTATE_DIR}" \
     -e "SSTATE_DIR=${SSTATE_DIR}" \
-    -v "${PROJECT_DIR}:${KAS_WORK_DIR}" \
+    -v "${LAMADIST_PROJECT_DIR}:${KAS_WORK_DIR}" \
     -e "KAS_WORK_DIR=${KAS_WORK_DIR}" \
-    --env-file "${PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
+    --env-file "${LAMADIST_PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
     --entrypoint /bin/dumb-init \
-    "${CONTAINER_IMAGE}" \
+    "${LAMADIST_CONTAINER_IMAGE}" \
     /bin/bash
 """
 
@@ -194,22 +198,22 @@ BSP="${usage_bsp:-x86_64}"
 KAS_CONFIG="${KAS_WORK_DIR}/kas/main.kas.yml:${KAS_WORK_DIR}/kas/bsp/${BSP}.kas.yml"
 KAS_DEBUG="${KAS_WORK_DIR}/kas/extras/debug.kas.yml"
 
-mkdir -p "${HOST_SSTATE_DIR}"
+mkdir -p "${LAMADIST_HOST_SSTATE_DIR}"
 
 KAS_ENV_LOCAL=""
-if [[ -f "${PROJECT_DIR}/.kas.env.local" ]]; then
-    KAS_ENV_LOCAL="--env-file ${PROJECT_DIR}/.kas.env.local"
+if [[ -f "${LAMADIST_PROJECT_DIR}/.kas.env.local" ]]; then
+    KAS_ENV_LOCAL="--env-file ${LAMADIST_PROJECT_DIR}/.kas.env.local"
 fi
 
-${CONTAINER_CMD} run --rm -it \
+${LAMADIST_CONTAINER_CMD} run --rm -it \
     --privileged \
     -v /dev:/dev \
-    -v "${HOST_SSTATE_DIR}:${SSTATE_DIR}" \
+    -v "${LAMADIST_HOST_SSTATE_DIR}:${SSTATE_DIR}" \
     -e "SSTATE_DIR=${SSTATE_DIR}" \
-    -v "${PROJECT_DIR}:${KAS_WORK_DIR}" \
+    -v "${LAMADIST_PROJECT_DIR}:${KAS_WORK_DIR}" \
     -e "KAS_WORK_DIR=${KAS_WORK_DIR}" \
-    --env-file "${PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
-    "${CONTAINER_IMAGE}" \
+    --env-file "${LAMADIST_PROJECT_DIR}/.kas.env" ${KAS_ENV_LOCAL} \
+    "${LAMADIST_CONTAINER_IMAGE}" \
     dump "${KAS_CONFIG}:${KAS_DEBUG}"
 """
 
@@ -222,7 +226,7 @@ description = "Remove build output artifacts"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-rm -rf "${PROJECT_DIR}/build/tmp/deploy"
+rm -rf "${LAMADIST_PROJECT_DIR}/build/tmp/deploy"
 echo "Cleaned build output artifacts."
 """
 
@@ -237,7 +241,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Aborted."
     exit 1
 fi
-rm -rf "${PROJECT_DIR}/build"
+rm -rf "${LAMADIST_PROJECT_DIR}/build"
 echo "Removed entire build directory."
 """
 
@@ -252,7 +256,7 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
     echo "Aborted."
     exit 1
 fi
-rm -rf "${HOST_SSTATE_DIR}"/*
+rm -rf "${LAMADIST_HOST_SSTATE_DIR}"/*
 echo "Cleaned shared state cache."
 """
 
@@ -261,7 +265,7 @@ description = "Remove container image"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-${CONTAINER_CMD} rmi "${CONTAINER_IMAGE}" || true
+${LAMADIST_CONTAINER_CMD} rmi "${LAMADIST_CONTAINER_IMAGE}" || true
 echo "Removed container image."
 """
 
@@ -274,5 +278,5 @@ description = "Show build version (via GitVersion)"
 run = """
 #!/usr/bin/env bash
 set -euo pipefail
-${CONTAINER_CMD} run --rm -v "${PROJECT_DIR}:/repo" gittools/gitversion /repo /showvariable FullSemVer
+${LAMADIST_CONTAINER_CMD} run --rm -v "${LAMADIST_PROJECT_DIR}:/repo" gittools/gitversion /repo /showvariable FullSemVer
 """
