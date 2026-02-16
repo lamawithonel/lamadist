@@ -232,6 +232,10 @@ for i in $(seq 1 60); do
     BOOT_SUCCESS=true
     break
   fi
+  if ! kill -0 "${QEMU_PID}" 2>/dev/null; then
+    echo "==> QEMU process exited early"
+    break
+  fi
   echo "==> Waiting for boot... (attempt ${i}/60)"
 done
 
