@@ -9,10 +9,10 @@ This document describes the tools required for LamaDist development, how to set 
 - [Required Tools](#required-tools)
 - [Developer Environment Setup](#developer-environment-setup)
 - [mise Task Reference](#mise-task-reference)
+- [mise Paranoid Mode](#mise-paranoid-mode)
 - [Container Python Dependencies](#container-python-dependencies)
 - [KAS Configuration](#kas-configuration)
 - [Troubleshooting](#troubleshooting)
-- [Transition Note](#transition-note)
 
 ---
 
@@ -129,6 +129,9 @@ sudo apt-get install -y \
 git clone https://github.com/lamawithonel/lamadist.git
 cd lamadist
 
+# Trust the mise config (required for MISE_PARANOID=1 users)
+mise trust
+
 # Install tools (mise manages everything)
 mise install
 
@@ -170,7 +173,7 @@ EOF
 ```bash
 # Default location: .cache/sstate/
 # Override with environment variable
-export HOST_SSTATE_DIR=/path/to/sstate
+export LAMADIST_HOST_SSTATE_DIR=/path/to/sstate
 ```
 
 **Download Directory**: Source tarballs
@@ -290,6 +293,72 @@ mise run version
 
 # List all tasks
 mise tasks
+```
+
+---
+
+## mise Paranoid Mode
+
+LamaDist's `.mise.toml` is fully compatible with
+[mise paranoid mode](https://mise.jdx.dev/paranoid.html) (`MISE_PARANOID=1`).
+
+### What is Paranoid Mode?
+
+Paranoid mode is an optional mise security setting that tightens how config
+files are handled:
+
+- **All** config files must be explicitly trusted before mise will load them
+  (not just files that set env vars or use templates).
+- Config files are **hashed** — any edit requires re-trusting.
+- Community plugins cannot be installed by short-name; a full Git URL is
+  required.
+
+Enable it globally:
+
+```bash
+# via environment variable (add to your shell profile)
+export MISE_PARANOID=1
+
+# or via mise setting
+mise settings set paranoid 1
+```
+
+### Paranoid Mode Requirements for `.mise.toml`
+
+To avoid errors when users run mise in paranoid mode, LamaDist follows these
+rules for `.mise.toml`:
+
+1. **`mise trust` must be run** after cloning the repository and after every
+   edit to `.mise.toml` (or `.mise.local.toml`). In paranoid mode the file
+   contents are hashed, so any change requires re-trusting.
+
+2. **A `min_version` is set** at the top of `.mise.toml` to guarantee that
+   the running mise version supports all features used in the config.
+
+3. **Non-standard env vars are prefixed with `LAMADIST_`** to avoid
+   collisions with other tools or the user's environment. Standard
+   ecosystem variables consumed by KAS or Yocto/BitBake (e.g.,
+   `KAS_WORK_DIR`, `SSTATE_DIR`) keep their canonical names.
+
+4. **Override env vars** via `.mise.local.toml` (git-ignored) or your shell
+   environment. For example, to use Docker instead of Podman:
+
+   ```toml
+   # .mise.local.toml
+   [env]
+   LAMADIST_CONTAINER_CMD = "docker"
+   ```
+
+### Quick Setup for Paranoid Mode Users
+
+```bash
+# After cloning
+cd lamadist
+mise trust               # trust the config file
+mise install             # install any managed tools
+
+# After editing .mise.toml
+mise trust               # re-trust after changes
 ```
 
 ---
@@ -584,12 +653,6 @@ bitbake -D core-image-minimal
 # Show dependencies
 bitbake -g core-image-minimal
 ```
-
----
-
-## Transition Note
-
-> **Note:** The existing `Makefile` remains functional during the transition period. The `mise` tasks described in this document are the target state and will be implemented via `.mise.toml` in a follow-up PR. During the transition, you may use either `make` or `mise run` commands. The `Makefile` and `Pipfile` will be removed once all mise tasks are validated and Phase 0.3 exit criteria are met.
 
 ---
 

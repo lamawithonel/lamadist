@@ -30,6 +30,9 @@ LamaDist provides a hardened Linux distribution built with Yocto Project for hom
 git clone https://github.com/lamawithonel/lamadist.git
 cd lamadist
 
+# Trust the mise config (required for MISE_PARANOID=1 users)
+mise trust
+
 # Install tools (mise manages everything)
 mise install
 
@@ -38,6 +41,11 @@ mise run build --bsp x86_64
 
 # Images will be in: build/tmp/deploy/images/genericx86-64/
 ```
+
+> **Paranoid mode**: LamaDist's `.mise.toml` is compatible with
+> `MISE_PARANOID=1`. After cloning (or after any `.mise.toml` change), run
+> `mise trust` to approve the config. See
+> [`docs/TOOLING.md`](docs/TOOLING.md#mise-paranoid-mode) for details.
 
 ### Supported Hardware (BSPs)
 

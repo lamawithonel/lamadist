@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Python dependency specification for the LamaDist build container.
+#
+# This file replaces the Pipfile.  Use `uv` to compile locked requirements:
+#
+#   uv pip compile pyproject.toml -o container/requirements.txt
+#
+# The host does NOT need Python — all Python tooling runs inside the container.
+# See docs/TOOLING.md for details.
+
+[project]
+name = "lamadist-container-deps"
+version = "0.0.0"
+description = "Python dependencies for the LamaDist KAS build container"
+requires-python = ">=3.12"
+
+dependencies = [
+    "kas",
+]
