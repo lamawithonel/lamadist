@@ -490,7 +490,12 @@ Required host packages:
 
 #### Runner Installation with Podman
 
-The self-hosted runner can run as a container using `podman` and `systemd`:
+The self-hosted runner can run as a container using `podman` and `systemd`.
+Two service installation methods are provided: a **user session** service and
+a **system service**. The system service is simpler because it avoids user
+D-Bus session requirements.
+
+##### Common Steps (Both Methods)
 
 1. **Create a dedicated user:**
 
@@ -531,11 +536,70 @@ The self-hosted runner can run as a container using `podman` and `systemd`:
        userns_mode: keep-id
    ```
 
-   > **Note:** Adjust the podman socket path for the `github-runner` user's UID.
+   > **Note:** Adjust the podman socket path for the `github-runner` user's UID
+   > (run `id -u github-runner` to find it).
    > Generate `RUNNER_TOKEN` from **Settings → Actions → Runners → New self-hosted runner**
    > in the GitHub repository.
 
-4. **Create the `systemd` service:**
+##### Method A: System Service (Recommended)
+
+A system-level service avoids user D-Bus session issues and starts at boot
+without requiring `loginctl enable-linger`.
+
+4. **Create the `systemd` system service:**
+
+   Save as `/etc/systemd/system/github-runner.service`:
+
+   ```ini
+   [Unit]
+   Description=GitHub Actions Self-Hosted Runner (LamaDist)
+   After=network-online.target
+   Wants=network-online.target
+
+   [Service]
+   Type=simple
+   User=github-runner
+   Group=github-runner
+   WorkingDirectory=/home/github-runner
+   Environment=XDG_RUNTIME_DIR=/run/user/%U
+   ExecStartPre=/usr/bin/podman-compose pull
+   ExecStart=/usr/bin/podman-compose up --abort-on-container-exit
+   ExecStop=/usr/bin/podman-compose down
+   Restart=on-failure
+   RestartSec=30
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+5. **Enable and start the service:**
+
+   ```sh
+   sudo systemctl daemon-reload
+   sudo systemctl enable github-runner.service
+   sudo systemctl start github-runner.service
+   ```
+
+##### Method B: User Session Service
+
+A user-level service runs under the `github-runner` user's systemd instance.
+`loginctl enable-linger` (step 1) is required so the user session persists
+after logout.
+
+> **Important:** Running `sudo -u github-runner systemctl --user …` from
+> another user's shell will fail with:
+> ```
+> Failed to connect to user scope bus via local transport:
+> $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined
+> ```
+> You must either log in directly as `github-runner` or use `machinectl`
+> to enter the user's session scope.
+
+4. **Create the `systemd` user service directory and unit:**
+
+   ```sh
+   sudo -u github-runner mkdir -p /home/github-runner/.config/systemd/user
+   ```
 
    Save as `/home/github-runner/.config/systemd/user/github-runner.service`:
 
@@ -560,15 +624,41 @@ The self-hosted runner can run as a container using `podman` and `systemd`:
 
 5. **Enable and start the service:**
 
+   Use `machinectl` to enter the user's service manager scope (this sets
+   `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` automatically):
+
    ```sh
-   sudo -u github-runner systemctl --user daemon-reload
-   sudo -u github-runner systemctl --user enable github-runner.service
-   sudo -u github-runner systemctl --user start github-runner.service
+   sudo machinectl shell github-runner@.host /bin/bash -c \
+     'systemctl --user daemon-reload && \
+      systemctl --user enable github-runner.service && \
+      systemctl --user start github-runner.service'
    ```
+
+   Alternatively, log in directly as the user (e.g. via SSH or `su -l`):
+
+   ```sh
+   sudo su -l github-runner
+   systemctl --user daemon-reload
+   systemctl --user enable github-runner.service
+   systemctl --user start github-runner.service
+   ```
+
+##### Verify
 
 6. **Verify the runner appears in GitHub:**
 
    Check **Settings → Actions → Runners** in the repository.
+
+   For the system service:
+   ```sh
+   sudo systemctl status github-runner.service
+   ```
+
+   For the user session service:
+   ```sh
+   sudo machinectl shell github-runner@.host /bin/bash -c \
+     'systemctl --user status github-runner.service'
+   ```
 
 #### Alternative: Direct Runner Installation
 
@@ -576,8 +666,9 @@ If the containerized runner has access issues with nested `podman`, install the 
 directly on the host:
 
 ```sh
-# Download latest runner
-cd /home/github-runner/actions-runner
+# Download latest runner (as github-runner user)
+sudo su -l github-runner
+mkdir -p ~/actions-runner && cd ~/actions-runner
 curl -o actions-runner-linux-x64.tar.gz -L \
   https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64-2.321.0.tar.gz
 tar xzf actions-runner-linux-x64.tar.gz
@@ -589,15 +680,20 @@ tar xzf actions-runner-linux-x64.tar.gz
   --name lamadist-builder \
   --labels self-hosted,linux,lamadist \
   --work _work
+exit
+```
 
-# Install as systemd service
+Install as a **system service** (runs as `github-runner` user, no D-Bus session needed):
+
+```sh
+cd /home/github-runner/actions-runner
 sudo ./svc.sh install github-runner
 sudo ./svc.sh start
 ```
 
-> **Tip:** For the direct installation, ensure `mise` is installed for the
-> `github-runner` user and that `podman` is configured for rootless operation
-> (`podman system migrate` after user creation).
+> **Tip:** Ensure `mise` is installed for the `github-runner` user and that
+> `podman` is configured for rootless operation (`podman system migrate`
+> after user creation).
 
 ## Paranoid Mode Requirements for `.mise.toml`
 
