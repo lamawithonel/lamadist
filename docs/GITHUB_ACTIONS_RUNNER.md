@@ -216,33 +216,31 @@ sudo usermod --add-subgids 200000-265535 github-runner;
 
 #### 3. Create the defaults file
 
-`/etc/default/github-runner` supplies environment variables that the
-**container process** reads at runtime.  These do **not** affect the host-side
-volume mount paths in the Quadlet file (Quadlet does not support variable
-expansion in `Volume=` directives — see step 5 for how to relocate volumes).
+`/etc/default/github-runner` centralises host-specific directory overrides.
+The Quadlet unit and the setup steps below both read from this file:
 
 ```sh
 sudo tee /etc/default/github-runner > /dev/null <<'EOF'
-# Environment variables for the GitHub Actions runner container.
-# These are injected into the container at runtime via EnvironmentFile=
-# in the [Service] section of the Quadlet unit.
-#
-# To change the *host-side* volume mount paths, edit the Volume= lines
-# in /etc/containers/systemd/github-runner.container directly (or use a
-# Quadlet drop-in), then run: sudo systemctl daemon-reload
+# Host directories for the GitHub Actions self-hosted runner.
+# Modify these to relocate the work or tool-cache directories.
 
-# Runner job workspace inside the container.
-RUNNER_WORKDIR=/home/runner/_work
+# Runner job workspace — where checked-out repos and build artifacts live.
+GITHUB_RUNNER_WORK_DIR=/var/lib/github-runner/work
+
+# Tool cache — persisted across jobs so setup-* actions skip downloads.
+# Maps to /opt/hostedtoolcache inside the runner container.
+GITHUB_RUNNER_CACHE_DIR=/var/cache/github-runner
 EOF
 ```
 
-#### 4. Create host directories
+#### 4. Source defaults and create directories
 
 ```sh
+. /etc/default/github-runner;
 sudo install -d -o github-runner -g github-runner -m 0750 \
-  /var/lib/github-runner/work;
+  "${GITHUB_RUNNER_WORK_DIR}";
 sudo install -d -o github-runner -g github-runner -m 0750 \
-  /var/cache/github-runner;
+  "${GITHUB_RUNNER_CACHE_DIR}";
 ```
 
 #### 5. Write the Quadlet `.container` unit
@@ -280,6 +278,7 @@ ContainerName=github-runner
 # --- runner configuration --------------------------------------------------
 Environment=RUNNER_NAME=lamadist-builder
 Environment=RUNNER_LABELS=self-hosted,linux,lamadist
+Environment=RUNNER_WORKDIR=/home/runner/_work
 # Set these in a drop-in or EnvironmentFile to avoid secrets in the unit:
 #   RUNNER_TOKEN=<token>
 #   RUNNER_REPOSITORY_URL=https://github.com/<org>/lamadist
@@ -287,14 +286,14 @@ EnvironmentFile=/var/lib/github-runner/runner.env
 
 # --- volumes ---------------------------------------------------------------
 # Work directory — runner job workspace.
-# To relocate on the host, change the source path below and run:
-#   sudo systemctl daemon-reload
+# The host path is configurable via GITHUB_RUNNER_WORK_DIR in
+# /etc/default/github-runner (default: /var/lib/github-runner/work).
 Volume=/var/lib/github-runner/work:/home/runner/_work:Z
 
 # Tool cache — persisted across jobs so setup-* actions (setup-node,
 # setup-python, etc.) can reuse previously downloaded tool versions.
-# To relocate on the host, change the source path below and run:
-#   sudo systemctl daemon-reload
+# The host path is configurable via GITHUB_RUNNER_CACHE_DIR in
+# /etc/default/github-runner (default: /var/cache/github-runner).
 Volume=/var/cache/github-runner:/opt/hostedtoolcache:Z
 
 # --- user namespace --------------------------------------------------------
@@ -359,15 +358,15 @@ LogDriver=journald
 # systemd [Service] — overrides applied to the generated unit
 # ---------------------------------------------------------------------------
 [Service]
-# Read runtime environment overrides (e.g. RUNNER_WORKDIR).  The dash prefix
-# tells systemd to continue silently if the file does not exist.
-EnvironmentFile=-/etc/default/github-runner
-
 Restart=on-failure
 RestartSec=30
 
 # Allow time for initial image pull (15 min).
 TimeoutStartSec=900
+
+# Read host-specific directory overrides.  The dash prefix tells systemd to
+# continue silently if the file does not exist.
+EnvironmentFile=-/etc/default/github-runner
 
 # --- systemd sandboxing ----------------------------------------------------
 # These directives restrict what the *podman* process (and by extension the
@@ -496,45 +495,23 @@ runner appears online.
 
 #### Customising directories
 
-Podman Quadlet does not support environment variable expansion in `Volume=`
-directives — paths are resolved at `daemon-reload` time by the Quadlet
-generator.  To relocate the work or cache directories:
+Edit `/etc/default/github-runner` to change the work or cache paths, then
+recreate the directories and restart the service:
 
-1. Stop the service and edit the Quadlet file:
+```sh
+sudo systemctl stop github-runner.service;
+. /etc/default/github-runner;
+sudo install -d -o github-runner -g github-runner -m 0750 \
+  "${GITHUB_RUNNER_WORK_DIR}";
+sudo install -d -o github-runner -g github-runner -m 0750 \
+  "${GITHUB_RUNNER_CACHE_DIR}";
+sudo systemctl start github-runner.service;
+```
 
-   ```sh
-   sudo systemctl stop github-runner.service;
-   sudo vi /etc/containers/systemd/github-runner.container;
-   ```
-
-2. Change the host-side path (left of the colon) in the relevant `Volume=`
-   line.  For example, to move the work directory to `/mnt/fast-ssd/work`:
-
-   ```ini
-   Volume=/mnt/fast-ssd/work:/home/runner/_work:Z
-   ```
-
-   Or to move the tool cache:
-
-   ```ini
-   Volume=/mnt/fast-ssd/toolcache:/opt/hostedtoolcache:Z
-   ```
-
-3. Create the new directories with correct ownership:
-
-   ```sh
-   sudo install -d -o github-runner -g github-runner -m 0750 \
-     /mnt/fast-ssd/work;
-   sudo install -d -o github-runner -g github-runner -m 0750 \
-     /mnt/fast-ssd/toolcache;
-   ```
-
-4. Reload and restart:
-
-   ```sh
-   sudo systemctl daemon-reload;
-   sudo systemctl start github-runner.service;
-   ```
+> **Note:** The `Volume=` directives in the Quadlet file use the default paths.
+> To apply custom paths from `/etc/default/github-runner`, you must also update
+> the `Volume=` lines in `/etc/containers/systemd/github-runner.container` to
+> match, then run `sudo systemctl daemon-reload`.
 
 #### Debugging Quadlet
 
