@@ -361,27 +361,40 @@ TimeoutStartSec=900
 EnvironmentFile=-/etc/default/github-runner
 
 # --- systemd directory management ------------------------------------------
-# These directives tell systemd to create and own service-specific writable
-# directories before the process starts.  Combined with ProtectSystem=strict,
-# they carve out the writable paths rootless Podman needs while keeping the
-# rest of the filesystem read-only.
+# These directives tell systemd to create and own writable directories for
+# the service user before the process starts.  Combined with
+# ProtectSystem=strict they carve out only the paths rootless Podman needs
+# while keeping the rest of the filesystem read-only.
 #
-# System service paths:
-#   StateDirectory=         → /var/lib/github-runner
-#   CacheDirectory=         → /var/cache/github-runner
-#   RuntimeDirectory=       → /run/github-runner
-#   LogsDirectory=          → /var/log/github-runner
-#   ConfigurationDirectory= → /etc/github-runner
+# Rootless Podman resolves storage paths via XDG Base Directory variables.
+# For a system service with User=, systemd does not set XDG variables
+# automatically, so any *Directory= path that falls outside $HOME must
+# have a corresponding Environment=XDG_*= directive to redirect Podman:
 #
-# Rootless Podman stores data under $HOME/.local/share/containers,
-# $HOME/.cache, and $HOME/.config/containers.  Since HOME=/var/lib/github-runner,
-# these all fall under the StateDirectory path.  The RuntimeDirectory
-# provides the equivalent of XDG_RUNTIME_DIR for conmon/podman sockets.
+#   systemd directive       Created path                XDG override
+#   ─────────────────────── ─────────────────────────── ──────────────────────
+#   StateDirectory=         /var/lib/github-runner      (none — is $HOME)
+#   CacheDirectory=         /var/cache/github-runner    XDG_CACHE_HOME
+#   RuntimeDirectory=       /run/github-runner          XDG_RUNTIME_DIR
+#
+# With these overrides, rootless Podman uses:
+#
+#   Podman path                        Resolved location
+#   ────────────────────────────────── ───────────────────────────────────
+#   $HOME/.local/share/containers      /var/lib/github-runner/.local/share/containers
+#   $HOME/.config/containers           /var/lib/github-runner/.config/containers
+#   $XDG_CACHE_HOME/containers         /var/cache/github-runner/containers
+#   $XDG_RUNTIME_DIR/containers        /run/github-runner/containers
+#
 StateDirectory=github-runner
 CacheDirectory=github-runner
 RuntimeDirectory=github-runner
-LogsDirectory=github-runner
-ConfigurationDirectory=github-runner
+
+# Redirect Podman's XDG lookups to the directories created above.
+# Without these, Podman defaults to paths under $HOME that may not
+# exist or may overlap with runner workspace data.
+Environment=XDG_CACHE_HOME=/var/cache/github-runner
+Environment=XDG_RUNTIME_DIR=/run/github-runner
 
 # --- systemd sandboxing ----------------------------------------------------
 # These directives restrict what the *podman* process (and by extension the
@@ -389,11 +402,10 @@ ConfigurationDirectory=github-runner
 # isolated by the OCI runtime; these add defence-in-depth at the systemd
 # level.
 
-# Deny writing to /usr, /boot, and /etc (except ConfigurationDirectory).
-# The *Directory= directives above ensure that /var/lib/github-runner,
-# /var/cache/github-runner, /run/github-runner, /var/log/github-runner, and
-# /etc/github-runner remain writable — satisfying rootless Podman's needs
-# for image storage, runtime state, and container configuration.
+# Deny writing to /usr, /boot, and /etc.  The *Directory= directives above
+# ensure /var/lib/github-runner (= $HOME), /var/cache/github-runner
+# (= $XDG_CACHE_HOME), and /run/github-runner (= $XDG_RUNTIME_DIR)
+# remain writable — satisfying rootless Podman's storage needs.
 ProtectSystem=strict
 
 # Make /home, /root, and /run/user inaccessible.  The service home is under
