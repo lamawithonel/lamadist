@@ -187,7 +187,9 @@ full systemd service — no hand-written `ExecStart` is needed.
 #### 1. Create a system service user
 
 Use a **system** user with no login shell.  The home directory is placed under
-`/var/lib` to keep service state out of `/home`.
+`/var/lib` to keep service state out of `/home`.  A single `github-runner`
+user can host multiple runner containers (one per repository) by using
+per-repo Quadlet files and work directories.
 
 > **Why not `/dev/null` as the home directory?**
 > A system user's home set to `/dev/null` would prevent Podman from storing
@@ -207,54 +209,41 @@ sudo useradd \
 
 #### 2. Provision `subuid`/`subgid` ranges
 
-Rootless Podman requires subordinate UID/GID mappings for the service user:
+Rootless Podman requires subordinate UID/GID mappings for the service user.
+This is a one-time step — the ranges are shared across all runner containers:
 
 ```sh
 sudo usermod --add-subuids 200000-265535 github-runner;
 sudo usermod --add-subgids 200000-265535 github-runner;
 ```
 
-#### 3. Create the defaults file
+#### 3. Create host directories
 
-`/etc/default/github-runner` centralises host-specific directory overrides.
-The Quadlet unit and the setup steps below both read from this file:
-
-```sh
-sudo tee /etc/default/github-runner > /dev/null <<'EOF'
-# Host directories for the GitHub Actions self-hosted runner.
-# Modify these to relocate the work or tool-cache directories.
-
-# Runner job workspace — where checked-out repos and build artifacts live.
-GITHUB_RUNNER_WORK_DIR=/var/lib/github-runner/work
-
-# Tool cache — persisted across jobs so setup-* actions skip downloads.
-# Maps to /opt/hostedtoolcache inside the runner container.
-GITHUB_RUNNER_CACHE_DIR=/var/cache/github-runner
-EOF
-```
-
-#### 4. Source defaults and create directories
+Create per-repo work directories and a shared tool cache.  The work directory
+lives under the service user's home at `~/work/<repo>`:
 
 ```sh
-. /etc/default/github-runner;
 sudo install -d -o github-runner -g github-runner -m 0750 \
-  "${GITHUB_RUNNER_WORK_DIR}";
+  /var/lib/github-runner/work/lamadist;
 sudo install -d -o github-runner -g github-runner -m 0750 \
-  "${GITHUB_RUNNER_CACHE_DIR}";
+  /var/cache/github-runner;
 ```
 
-#### 5. Write the Quadlet `.container` unit
+#### 4. Write the Quadlet `.container` unit
 
-Save as `/etc/containers/systemd/github-runner.container`:
+Save as `/etc/containers/systemd/github-runner-lamadist.container`.  Each
+repository gets its own `.container` file — the `-lamadist` suffix namespaces
+this runner.  Quadlet generates `github-runner-lamadist.service` from the
+filename automatically.
 
 ```ini
-# /etc/containers/systemd/github-runner.container
-# Podman Quadlet unit for GitHub Actions self-hosted runner.
+# /etc/containers/systemd/github-runner-lamadist.container
+# Podman Quadlet unit for GitHub Actions self-hosted runner (LamaDist).
 #
 # After editing, reload with:
 #   sudo systemctl daemon-reload
 #
-# Quadlet generates github-runner.service from this file.
+# Quadlet generates github-runner-lamadist.service from this file.
 # Debug with:
 #   /usr/lib/systemd/system-generators/podman-system-generator --dryrun
 #
@@ -273,7 +262,7 @@ Wants=network-online.target
 # ---------------------------------------------------------------------------
 [Container]
 Image=ghcr.io/actions/actions-runner:latest
-ContainerName=github-runner
+ContainerName=github-runner-lamadist
 
 # --- runner configuration --------------------------------------------------
 Environment=RUNNER_NAME=lamadist-builder
@@ -282,19 +271,17 @@ Environment=RUNNER_WORKDIR=/home/runner/_work
 # Set these in a drop-in or EnvironmentFile to avoid secrets in the unit:
 #   RUNNER_TOKEN=<token>
 #   RUNNER_REPOSITORY_URL=https://github.com/<org>/lamadist
-EnvironmentFile=/var/lib/github-runner/runner.env
+EnvironmentFile=/var/lib/github-runner/lamadist.env
 
 # --- volumes ---------------------------------------------------------------
-# Work directory — runner job workspace.
-# The host path is configurable via GITHUB_RUNNER_WORK_DIR in
-# /etc/default/github-runner (default: /var/lib/github-runner/work).
-Volume=/var/lib/github-runner/work:/home/runner/_work:Z
+# Work directory — per-repo runner job workspace.
+# Uses :Z (private label) since this volume is exclusive to this container.
+Volume=/var/lib/github-runner/work/lamadist:/home/runner/_work:Z
 
 # Tool cache — persisted across jobs so setup-* actions (setup-node,
 # setup-python, etc.) can reuse previously downloaded tool versions.
-# The host path is configurable via GITHUB_RUNNER_CACHE_DIR in
-# /etc/default/github-runner (default: /var/cache/github-runner).
-Volume=/var/cache/github-runner:/opt/hostedtoolcache:Z
+# Uses :z (shared label) so multiple runner containers can share the cache.
+Volume=/var/cache/github-runner:/opt/hostedtoolcache:z
 
 # --- user namespace --------------------------------------------------------
 # Map the service user's UID into the container so bind-mounted volumes are
@@ -302,8 +289,8 @@ Volume=/var/cache/github-runner:/opt/hostedtoolcache:Z
 UserNS=keep-id
 
 # --- SELinux ---------------------------------------------------------------
-# Volumes use :Z for private SELinux relabelling.  The default container
-# SELinux type (container_t) is sufficient; override only if needed:
+# Volumes use :Z/:z for SELinux relabelling.  The default container SELinux
+# type (container_t) is sufficient; override only if needed:
 #
 # Run the container as spc_t (super-privileged container) — disables most
 # SELinux confinement.  Enable only when the runner needs host-level access
@@ -358,6 +345,11 @@ LogDriver=journald
 # systemd [Service] — overrides applied to the generated unit
 # ---------------------------------------------------------------------------
 [Service]
+# Run Podman as the github-runner system user (rootless).  The container
+# image may start processes as root internally, but Podman itself runs
+# unprivileged under this user's UID namespace.
+User=github-runner
+
 Restart=on-failure
 RestartSec=30
 
@@ -374,8 +366,9 @@ EnvironmentFile=-/etc/default/github-runner
 # isolated by the OCI runtime; these add defence-in-depth at the systemd
 # level.
 
-# Deny writing to /usr, /boot, and /etc.
-ProtectSystem=strict
+# ProtectSystem=strict is intentionally omitted.  Rootless Podman needs
+# write access to /var/lib/containers and /run/containers for image storage
+# and runtime state; strict mode blocks these paths and causes exit code 125.
 
 # Make /home, /root, and /run/user inaccessible.  The service home is under
 # /var/lib so this does not conflict.
@@ -401,9 +394,10 @@ ProtectControlGroups=yes
 # PrivateDevices=yes would hide.  Disable if builds fail with FUSE errors:
 PrivateDevices=yes
 
-# Restrict the set of system calls to a reasonable baseline.  Uses the
-# @system-service pre-defined set which covers most service needs.
-SystemCallFilter=@system-service
+# Deny specific system call groups instead of allowlisting.
+# @system-service causes SIGSYS with the rootless Podman + container runtime
+# stack; a targeted denylist is more compatible:
+SystemCallFilter=~@reboot ~@swap ~@obsolete ~@raw-io
 
 # Prevent mapping memory as both writable and executable.  Podman itself
 # does not need W^X memory, but some JIT-based tools inside the container
@@ -455,13 +449,14 @@ ProtectHostname=yes
 WantedBy=multi-user.target
 ```
 
-#### 6. Create the environment file
+#### 5. Create the environment file
 
-Store secrets in a file readable only by root and the service user:
+Store secrets in a per-repo file readable only by root and the service user.
+The filename matches the repo suffix used in the Quadlet unit:
 
 ```sh
 sudo install -o root -g github-runner -m 0640 /dev/null \
-  /var/lib/github-runner/runner.env;
+  /var/lib/github-runner/lamadist.env;
 ```
 
 Add the runner registration token and repository URL.  Generate
@@ -469,25 +464,25 @@ Add the runner registration token and repository URL.  Generate
 in the GitHub repository:
 
 ```sh
-sudo tee /var/lib/github-runner/runner.env > /dev/null <<'EOF'
+sudo tee /var/lib/github-runner/lamadist.env > /dev/null <<'EOF'
 RUNNER_TOKEN=<token>
 RUNNER_REPOSITORY_URL=https://github.com/<org>/lamadist
 EOF
 ```
 
-#### 7. Enable and start the service
+#### 6. Enable and start the service
 
 ```sh
 sudo systemctl daemon-reload;
-sudo systemctl enable github-runner.service;
-sudo systemctl start github-runner.service;
+sudo systemctl enable github-runner-lamadist.service;
+sudo systemctl start github-runner-lamadist.service;
 ```
 
-#### 8. Verify
+#### 7. Verify
 
 ```sh
-sudo systemctl status github-runner.service;
-sudo podman logs github-runner;
+sudo systemctl status github-runner-lamadist.service;
+sudo podman logs github-runner-lamadist;
 ```
 
 Check **Settings → Actions → Runners** in the GitHub repository to confirm the
@@ -495,23 +490,53 @@ runner appears online.
 
 #### Customising directories
 
-Edit `/etc/default/github-runner` to change the work or cache paths, then
-recreate the directories and restart the service:
+Podman Quadlet does not support environment variable expansion in `Volume=`
+directives — paths are resolved at `daemon-reload` time by the Quadlet
+generator.  To relocate the work or cache directories, edit the `Volume=`
+lines in the `.container` file directly:
 
 ```sh
-sudo systemctl stop github-runner.service;
-. /etc/default/github-runner;
-sudo install -d -o github-runner -g github-runner -m 0750 \
-  "${GITHUB_RUNNER_WORK_DIR}";
-sudo install -d -o github-runner -g github-runner -m 0750 \
-  "${GITHUB_RUNNER_CACHE_DIR}";
-sudo systemctl start github-runner.service;
+sudo systemctl stop github-runner-lamadist.service;
+sudo vi /etc/containers/systemd/github-runner-lamadist.container;
+# Edit the Volume= lines to use the new host paths.
+sudo systemctl daemon-reload;
+sudo systemctl start github-runner-lamadist.service;
 ```
 
-> **Note:** The `Volume=` directives in the Quadlet file use the default paths.
-> To apply custom paths from `/etc/default/github-runner`, you must also update
-> the `Volume=` lines in `/etc/containers/systemd/github-runner.container` to
-> match, then run `sudo systemctl daemon-reload`.
+#### Adding another repository
+
+To add a runner for a second repository (e.g. `other-project`):
+
+1. Create a new work directory:
+
+   ```sh
+   sudo install -d -o github-runner -g github-runner -m 0750 \
+     /var/lib/github-runner/work/other-project;
+   ```
+
+2. Copy and customise the Quadlet file:
+
+   ```sh
+   sudo cp /etc/containers/systemd/github-runner-lamadist.container \
+     /etc/containers/systemd/github-runner-other-project.container;
+   ```
+
+   Edit the new file — change `ContainerName`, `RUNNER_NAME`,
+   `RUNNER_LABELS`, the work `Volume=` source path, and `EnvironmentFile`.
+
+3. Create a per-repo env file with the new runner token:
+
+   ```sh
+   sudo install -o root -g github-runner -m 0640 /dev/null \
+     /var/lib/github-runner/other-project.env;
+   ```
+
+4. Enable and start:
+
+   ```sh
+   sudo systemctl daemon-reload;
+   sudo systemctl enable --now github-runner-other-project.service;
+   ```
 
 #### Debugging Quadlet
 
@@ -524,7 +549,7 @@ To preview the generated service without activating it:
 To validate:
 
 ```sh
-systemd-analyze --generators=true verify github-runner.service;
+systemd-analyze --generators=true verify github-runner-lamadist.service;
 ```
 
 ### Alternative: Direct Runner Installation
@@ -555,7 +580,7 @@ sudo -u github-runner ./config.sh \
   --token <RUNNER_TOKEN> \
   --name lamadist-builder \
   --labels self-hosted,linux,lamadist \
-  --work work;
+  --work work/lamadist;
 ```
 
 #### 3. Install and start the system service
