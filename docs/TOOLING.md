@@ -494,7 +494,7 @@ Required host packages:
 The self-hosted runner is managed as a native systemd service using a
 [Podman Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
 `.container` unit.  Quadlet translates a declarative `.container` file into a
-full systemd service — no `podman-compose` or hand-written `ExecStart` is needed.
+full systemd service — no hand-written `ExecStart` is needed.
 
 ##### 1. Create a system service user
 
