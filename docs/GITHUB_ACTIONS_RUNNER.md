@@ -360,18 +360,44 @@ TimeoutStartSec=900
 # continue silently if the file does not exist.
 EnvironmentFile=-/etc/default/github-runner
 
+# --- systemd directory management ------------------------------------------
+# These directives tell systemd to create and own service-specific writable
+# directories before the process starts.  Combined with ProtectSystem=strict,
+# they carve out the writable paths rootless Podman needs while keeping the
+# rest of the filesystem read-only.
+#
+# System service paths:
+#   StateDirectory=         → /var/lib/github-runner
+#   CacheDirectory=         → /var/cache/github-runner
+#   RuntimeDirectory=       → /run/github-runner
+#   LogsDirectory=          → /var/log/github-runner
+#   ConfigurationDirectory= → /etc/github-runner
+#
+# Rootless Podman stores data under $HOME/.local/share/containers,
+# $HOME/.cache, and $HOME/.config/containers.  Since HOME=/var/lib/github-runner,
+# these all fall under the StateDirectory path.  The RuntimeDirectory
+# provides the equivalent of XDG_RUNTIME_DIR for conmon/podman sockets.
+StateDirectory=github-runner
+CacheDirectory=github-runner
+RuntimeDirectory=github-runner
+LogsDirectory=github-runner
+ConfigurationDirectory=github-runner
+
 # --- systemd sandboxing ----------------------------------------------------
 # These directives restrict what the *podman* process (and by extension the
 # container runtime) can access on the host.  The container itself is already
 # isolated by the OCI runtime; these add defence-in-depth at the systemd
 # level.
 
-# ProtectSystem=strict is intentionally omitted.  Rootless Podman needs
-# write access to /var/lib/containers and /run/containers for image storage
-# and runtime state; strict mode blocks these paths and causes exit code 125.
+# Deny writing to /usr, /boot, and /etc (except ConfigurationDirectory).
+# The *Directory= directives above ensure that /var/lib/github-runner,
+# /var/cache/github-runner, /run/github-runner, /var/log/github-runner, and
+# /etc/github-runner remain writable — satisfying rootless Podman's needs
+# for image storage, runtime state, and container configuration.
+ProtectSystem=strict
 
 # Make /home, /root, and /run/user inaccessible.  The service home is under
-# /var/lib so this does not conflict.
+# /var/lib (via StateDirectory) so this does not conflict.
 ProtectHome=yes
 
 # Give the service its own /tmp and /var/tmp.
