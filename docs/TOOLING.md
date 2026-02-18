@@ -469,226 +469,366 @@ jobs:
 
 ### Self-Hosted Runner Setup
 
-GitHub-hosted runners lack sufficient resources for Yocto builds. A self-hosted runner
-is required with the following specifications.
+GitHub-hosted runners lack sufficient resources for Yocto builds.  A self-hosted
+runner is required with the following specifications.
 
 #### Host Requirements
 
 | Resource | Minimum | Recommended |
 |----------|---------|-------------|
-| CPU | 4 cores | 8+ cores |
-| RAM | 16 GB | 32+ GB |
-| Disk | 100 GB free | 200+ GB SSD |
-| OS | Linux (x86_64) | Fedora, Ubuntu 22.04+ |
+| CPU      | 4 cores | 8+ cores    |
+| RAM      | 16 GB   | 32+ GB      |
+| Disk     | 100 GB free | 200+ GB SSD |
+| OS       | Linux (x86_64) | Fedora 40+, Ubuntu 24.04+ |
 
 Required host packages:
 
-- `podman` (rootless mode)
+- `podman` ≥ 4.4 (Quadlet support)
 - `qemu-system-x86_64` and `qemu-img`
 - `git`
 - `curl`
+- `container-selinux` (if SELinux is enforcing)
 
-#### Runner Installation with Podman
+#### Runner Installation with Podman Quadlet
 
-The self-hosted runner can run as a container using `podman` and `systemd`.
-Two service installation methods are provided: a **user session** service and
-a **system service**. The system service is simpler because it avoids user
-D-Bus session requirements.
+The self-hosted runner is managed as a native systemd service using a
+[Podman Quadlet](https://docs.podman.io/en/latest/markdown/podman-systemd.unit.5.html)
+`.container` unit.  Quadlet translates a declarative `.container` file into a
+full systemd service — no `podman-compose` or hand-written `ExecStart` is needed.
 
-##### Common Steps (Both Methods)
+##### 1. Create a system service user
 
-1. **Create a dedicated user:**
+Use a **system** user with no login shell.  The home directory is placed under
+`/var/lib` to keep service state out of `/home`:
 
-   ```sh
-   sudo useradd -m -s /bin/bash github-runner
-   sudo loginctl enable-linger github-runner
-   ```
+```sh
+sudo useradd \
+  --system \
+  --home-dir /var/lib/github-runner \
+  --create-home \
+  --shell /usr/sbin/nologin \
+  github-runner;
+```
 
-2. **Create the runner working directory:**
+##### 2. Provision `subuid`/`subgid` ranges
 
-   ```sh
-   sudo -u github-runner mkdir -p /home/github-runner/actions-runner
-   sudo -u github-runner mkdir -p /home/github-runner/lamadist-sstate
-   ```
+Rootless Podman requires subordinate UID/GID mappings for the service user:
 
-3. **Create `podman-compose.yml`:**
+```sh
+sudo usermod --add-subuids 200000-265535 github-runner;
+sudo usermod --add-subgids 200000-265535 github-runner;
+```
 
-   Save as `/home/github-runner/podman-compose.yml`:
+##### 3. Create the cache directory
 
-   ```yaml
-   version: "3"
-   services:
-     runner:
-       image: ghcr.io/actions/actions-runner:latest
-       restart: unless-stopped
-       environment:
-         - RUNNER_NAME=lamadist-builder
-         - RUNNER_LABELS=self-hosted,linux,lamadist
-         - RUNNER_TOKEN=${RUNNER_TOKEN}
-         - RUNNER_REPOSITORY_URL=https://github.com/<org>/lamadist
-         - RUNNER_WORKDIR=/home/runner/_work
-       volumes:
-         - /home/github-runner/actions-runner:/home/runner/_work
-         - /home/github-runner/lamadist-sstate:/sstate-cache
-         - /var/run/user/1001/podman/podman.sock:/var/run/docker.sock
-       security_opt:
-         - label=disable
-       userns_mode: keep-id
-   ```
+The `sstate` cache directory is configurable via the `GITHUB_RUNNER_CACHE_DIR`
+environment variable and defaults to `/var/cache/github-runner`:
 
-   > **Note:** Adjust the podman socket path for the `github-runner` user's UID
-   > (run `id -u github-runner` to find it).
-   > Generate `RUNNER_TOKEN` from **Settings → Actions → Runners → New self-hosted runner**
-   > in the GitHub repository.
+```sh
+GITHUB_RUNNER_CACHE_DIR="${GITHUB_RUNNER_CACHE_DIR:-/var/cache/github-runner}";
+sudo install -d -o github-runner -g github-runner -m 0750 \
+  "${GITHUB_RUNNER_CACHE_DIR}";
+```
 
-##### Method A: System Service (Recommended)
+##### 4. Create the work directory
 
-A system-level service avoids user D-Bus session issues and starts at boot
-without requiring `loginctl enable-linger`.
+```sh
+sudo install -d -o github-runner -g github-runner -m 0750 \
+  /var/lib/github-runner/_work;
+```
 
-4. **Create the `systemd` system service:**
+##### 5. Write the Quadlet `.container` unit
 
-   Save as `/etc/systemd/system/github-runner.service`:
+Save as `/etc/containers/systemd/github-runner.container`:
 
-   ```ini
-   [Unit]
-   Description=GitHub Actions Self-Hosted Runner (LamaDist)
-   After=network-online.target
-   Wants=network-online.target
+```ini
+# /etc/containers/systemd/github-runner.container
+# Podman Quadlet unit for GitHub Actions self-hosted runner.
+#
+# After editing, reload with:
+#   sudo systemctl daemon-reload
+#
+# Quadlet generates github-runner.service from this file.
+# Debug with:
+#   /usr/lib/systemd/system-generators/podman-system-generator --dryrun
+#
+# See: podman-systemd.unit(5)
 
-   [Service]
-   Type=simple
-   User=github-runner
-   Group=github-runner
-   WorkingDirectory=/home/github-runner
-   Environment=XDG_RUNTIME_DIR=/run/user/%U
-   ExecStartPre=/usr/bin/podman-compose pull
-   ExecStart=/usr/bin/podman-compose up --abort-on-container-exit
-   ExecStop=/usr/bin/podman-compose down
-   Restart=on-failure
-   RestartSec=30
+# ---------------------------------------------------------------------------
+# systemd [Unit]
+# ---------------------------------------------------------------------------
+[Unit]
+Description=GitHub Actions Self-Hosted Runner (LamaDist)
+After=network-online.target
+Wants=network-online.target
 
-   [Install]
-   WantedBy=multi-user.target
-   ```
+# ---------------------------------------------------------------------------
+# Podman [Container]
+# ---------------------------------------------------------------------------
+[Container]
+Image=ghcr.io/actions/actions-runner:latest
+ContainerName=github-runner
 
-5. **Enable and start the service:**
+# --- runner configuration --------------------------------------------------
+Environment=RUNNER_NAME=lamadist-builder
+Environment=RUNNER_LABELS=self-hosted,linux,lamadist
+Environment=RUNNER_WORKDIR=/home/runner/_work
+# Set these in a drop-in or EnvironmentFile to avoid secrets in the unit:
+#   RUNNER_TOKEN=<token>
+#   RUNNER_REPOSITORY_URL=https://github.com/<org>/lamadist
+EnvironmentFile=/var/lib/github-runner/runner.env
 
-   ```sh
-   sudo systemctl daemon-reload
-   sudo systemctl enable github-runner.service
-   sudo systemctl start github-runner.service
-   ```
+# --- volumes ---------------------------------------------------------------
+# Work directory — runner job workspace.
+Volume=/var/lib/github-runner/_work:/home/runner/_work:Z
 
-##### Method B: User Session Service
+# Shared-state cache — configurable via GITHUB_RUNNER_CACHE_DIR on the host.
+# Default: /var/cache/github-runner
+Volume=/var/cache/github-runner:/sstate-cache:Z
 
-A user-level service runs under the `github-runner` user's systemd instance.
-`loginctl enable-linger` (step 1) is required so the user session persists
-after logout.
+# --- user namespace --------------------------------------------------------
+# Map the service user's UID into the container so bind-mounted volumes are
+# readable by the in-container runner process.
+UserNS=keep-id
 
-> **Important:** Running `sudo -u github-runner systemctl --user …` from
-> another user's shell will fail with:
-> ```
-> Failed to connect to user scope bus via local transport:
-> $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined
-> ```
-> You must either log in directly as `github-runner` or use `machinectl`
-> to enter the user's session scope.
+# --- SELinux ---------------------------------------------------------------
+# Volumes use :Z for private SELinux relabelling.  The default container
+# SELinux type (container_t) is sufficient; override only if needed:
+#
+# Run the container as spc_t (super-privileged container) — disables most
+# SELinux confinement.  Enable only when the runner needs host-level access
+# that container_t blocks (e.g. mounting arbitrary host paths):
+# SecurityLabelType=spc_t
+#
+# Disable SELinux labelling entirely.  Useful on systems without SELinux or
+# when debugging label denials, but removes an isolation layer:
+# SecurityLabelDisable=true
 
-4. **Create the `systemd` user service directory and unit:**
+# --- capabilities / hardening inside the container -------------------------
+# Drop all capabilities and add back only what is needed.
+DropCapability=ALL
+# Actions runner needs no special capabilities for most workloads.  If a
+# workflow step requires e.g. CAP_NET_RAW for ping, add it here:
+# AddCapability=CAP_NET_RAW
 
-   ```sh
-   sudo -u github-runner mkdir -p /home/github-runner/.config/systemd/user
-   ```
+# Prevent container processes from gaining new privileges via setuid/setgid.
+NoNewPrivileges=true
 
-   Save as `/home/github-runner/.config/systemd/user/github-runner.service`:
+# Make the container root filesystem read-only.  The runner writes only to
+# its work directory (bind-mounted above) and to tmpfs.  Disable if actions
+# need to install packages inside the container at runtime:
+# ReadOnly=true
 
-   ```ini
-   [Unit]
-   Description=GitHub Actions Self-Hosted Runner (LamaDist)
-   After=network-online.target
-   Wants=network-online.target
+# --- logging ---------------------------------------------------------------
+LogDriver=journald
 
-   [Service]
-   Type=simple
-   WorkingDirectory=/home/github-runner
-   ExecStartPre=/usr/bin/podman-compose pull
-   ExecStart=/usr/bin/podman-compose up --abort-on-container-exit
-   ExecStop=/usr/bin/podman-compose down
-   Restart=on-failure
-   RestartSec=30
+# --- auto-update -----------------------------------------------------------
+# Uncomment to enable podman-auto-update(1) for automatic image pulls:
+# AutoUpdate=registry
 
-   [Install]
-   WantedBy=default.target
-   ```
+# ---------------------------------------------------------------------------
+# systemd [Service] — overrides applied to the generated unit
+# ---------------------------------------------------------------------------
+[Service]
+Restart=on-failure
+RestartSec=30
 
-5. **Enable and start the service:**
+# Allow time for initial image pull (15 min).
+TimeoutStartSec=900
 
-   Use `machinectl` to enter the user's service manager scope (this sets
-   `XDG_RUNTIME_DIR` and `DBUS_SESSION_BUS_ADDRESS` automatically):
+# --- systemd sandboxing ----------------------------------------------------
+# These directives restrict what the *podman* process (and by extension the
+# container runtime) can access on the host.  The container itself is already
+# isolated by the OCI runtime; these add defence-in-depth at the systemd
+# level.
 
-   ```sh
-   sudo machinectl shell github-runner@.host /bin/bash -c \
-     'systemctl --user daemon-reload && \
-      systemctl --user enable github-runner.service && \
-      systemctl --user start github-runner.service'
-   ```
+# Deny writing to /usr, /boot, and /etc.
+ProtectSystem=strict
 
-   Alternatively, log in directly as the user (e.g. via SSH or `su -l`):
+# Make /home, /root, and /run/user inaccessible.  The service home is under
+# /var/lib so this does not conflict.
+ProtectHome=yes
 
-   ```sh
-   sudo su -l github-runner
-   systemctl --user daemon-reload
-   systemctl --user enable github-runner.service
-   systemctl --user start github-runner.service
-   ```
+# Give the service its own /tmp and /var/tmp.
+PrivateTmp=yes
 
-##### Verify
+# Prevent loading kernel modules.
+ProtectKernelModules=yes
 
-6. **Verify the runner appears in GitHub:**
+# Make kernel tunables (/proc/sys, /sys) read-only.
+ProtectKernelTunables=yes
 
-   Check **Settings → Actions → Runners** in the repository.
+# Protect kernel logs (/proc/kmsg, /dev/kmsg).
+ProtectKernelLogs=yes
 
-   For the system service:
-   ```sh
-   sudo systemctl status github-runner.service
-   ```
+# Make cgroup filesystem read-only.
+ProtectControlGroups=yes
 
-   For the user session service:
-   ```sh
-   sudo machinectl shell github-runner@.host /bin/bash -c \
-     'systemctl --user status github-runner.service'
-   ```
+# Hide host device nodes; only pseudo-devices (/dev/null etc.) are visible.
+# Podman needs /dev/fuse when using overlay storage in rootless mode, which
+# PrivateDevices=yes would hide.  Disable if builds fail with FUSE errors:
+PrivateDevices=yes
+
+# Restrict the set of system calls to a reasonable baseline.  Uses the
+# @system-service pre-defined set which covers most service needs.
+SystemCallFilter=@system-service
+
+# Prevent mapping memory as both writable and executable.  Podman itself
+# does not need W^X memory, but some JIT-based tools inside the container
+# might.  Disable if a workflow step fails with SIGSEGV in JIT code:
+MemoryDenyWriteExecute=yes
+
+# Lock down the service personality to the native architecture only.
+LockPersonality=yes
+
+# Restrict namespace creation.  Podman must create user and mount namespaces
+# to launch containers.  This allows only those two:
+RestrictNamespaces=user mnt
+
+# Limit address families to IP and UNIX sockets (Podman needs AF_NETLINK
+# for network setup).  Remove AF_NETLINK only if runner jobs never create
+# containers with custom networking:
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+
+# Disallow realtime scheduling.
+RestrictRealtime=yes
+
+# Prevent writes to the hardware clock.
+ProtectClock=yes
+
+# Make the hostname and machine-id appear read-only.
+ProtectHostname=yes
+
+# The following are disabled by default because they break Podman's
+# container lifecycle management — enable only after testing:
+#
+# ProtectProc=invisible
+#   Hides /proc entries for other users' processes.  May interfere with
+#   conmon's PID monitoring of the container process.
+#
+# PrivateNetwork=yes
+#   Gives the service its own network namespace with only loopback.
+#   Completely breaks container networking; enable only for fully
+#   offline/air-gapped runners that never pull images.
+#
+# PrivateUsers=yes
+#   Creates a private user namespace for the service itself (in addition
+#   to the one Podman creates for the container).  Can cause UID mapping
+#   conflicts with rootless Podman.
+
+# ---------------------------------------------------------------------------
+# systemd [Install]
+# ---------------------------------------------------------------------------
+[Install]
+WantedBy=multi-user.target
+```
+
+##### 6. Create the environment file
+
+Store secrets in a file readable only by root and the service user:
+
+```sh
+sudo install -o root -g github-runner -m 0640 /dev/null \
+  /var/lib/github-runner/runner.env;
+```
+
+Add the runner registration token and repository URL.  Generate
+`RUNNER_TOKEN` from **Settings → Actions → Runners → New self-hosted runner**
+in the GitHub repository:
+
+```sh
+sudo tee /var/lib/github-runner/runner.env > /dev/null <<'EOF'
+RUNNER_TOKEN=<token>
+RUNNER_REPOSITORY_URL=https://github.com/<org>/lamadist
+EOF
+```
+
+##### 7. Enable and start the service
+
+```sh
+sudo systemctl daemon-reload;
+sudo systemctl enable github-runner.service;
+sudo systemctl start github-runner.service;
+```
+
+##### 8. Verify
+
+```sh
+sudo systemctl status github-runner.service;
+sudo podman logs github-runner;
+```
+
+Check **Settings → Actions → Runners** in the GitHub repository to confirm the
+runner appears online.
+
+##### Customising the cache path
+
+To use a non-default cache location, override the volume in a systemd drop-in:
+
+```sh
+sudo systemctl edit github-runner.service;
+```
+
+Add:
+
+```ini
+[Container]
+Volume=/mnt/fast-ssd/sstate:/sstate-cache:Z
+```
+
+##### Debugging Quadlet
+
+To preview the generated service without activating it:
+
+```sh
+/usr/lib/systemd/system-generators/podman-system-generator --dryrun;
+```
+
+To validate:
+
+```sh
+systemd-analyze --generators=true verify github-runner.service;
+```
 
 #### Alternative: Direct Runner Installation
 
-If the containerized runner has access issues with nested `podman`, install the runner
-directly on the host:
+If the containerized runner has access issues with nested `podman`, install the
+runner binary directly on the host under the same system user.
+
+##### 1. Create the system user (if not already done)
 
 ```sh
-# Download latest runner (as github-runner user)
-sudo su -l github-runner
-mkdir -p ~/actions-runner && cd ~/actions-runner
-curl -o actions-runner-linux-x64.tar.gz -L \
-  https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64-2.321.0.tar.gz
-tar xzf actions-runner-linux-x64.tar.gz
+sudo useradd \
+  --system \
+  --home-dir /var/lib/github-runner \
+  --create-home \
+  --shell /usr/sbin/nologin \
+  github-runner;
+```
 
-# Configure
-./config.sh \
+##### 2. Download and configure the runner
+
+```sh
+cd /var/lib/github-runner;
+sudo -u github-runner curl -o actions-runner-linux-x64.tar.gz -L \
+  https://github.com/actions/runner/releases/latest/download/actions-runner-linux-x64-2.321.0.tar.gz;
+sudo -u github-runner tar xzf actions-runner-linux-x64.tar.gz;
+sudo -u github-runner ./config.sh \
   --url https://github.com/<org>/lamadist \
   --token <RUNNER_TOKEN> \
   --name lamadist-builder \
   --labels self-hosted,linux,lamadist \
-  --work _work
-exit
+  --work _work;
 ```
 
-Install as a **system service** (runs as `github-runner` user, no D-Bus session needed):
+##### 3. Install and start the system service
+
+The bundled `svc.sh` creates a systemd system service that runs as the
+specified user:
 
 ```sh
-cd /home/github-runner/actions-runner
-sudo ./svc.sh install github-runner
-sudo ./svc.sh start
+sudo ./svc.sh install github-runner;
+sudo ./svc.sh start;
 ```
 
 > **Tip:** Ensure `mise` is installed for the `github-runner` user and that
